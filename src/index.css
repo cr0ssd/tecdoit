@@ -1,0 +1,11 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background-color: #f4f7f6; /* Un gris muy clarito, ideal para sistemas de gestión */
+  color: #333;
+} 
