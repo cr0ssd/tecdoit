@@ -214,3 +214,121 @@ body {
   background-color: #3498db;
   color: white;
 }
+
+/* =========================================
+   4. ESTILOS DEL MODAL (VENTANA EMERGENTE)
+   ========================================= */
+   .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6); /* Fondo oscurecido */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  
+  .modal-content {
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 450px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  }
+  
+  .modal-content h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-size: 20px;
+  }
+  
+  .form-group {
+    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .form-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #7f8c8d;
+  }
+  
+  .form-group input, .form-group select {
+    padding: 10px;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+  }
+  
+  .form-group input:focus, .form-group select:focus {
+    border-color: #3498db;
+  }
+  
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 25px;
+  }
+  
+  .btn-secondary {
+    background-color: transparent;
+    color: #7f8c8d;
+    border: 1px solid #bdc3c7;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+  
+  .btn-secondary:hover {
+    background-color: #ecf0f1;
+    color: #2c3e50;
+  }
+
+/* =========================================
+   5. ESTILOS DE LA PANTALLA DE LOGIN
+   ========================================= */
+   .login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #1a252f; /* Fondo oscuro institucional */
+  }
+  
+  .login-card {
+    background-color: white;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+    width: 100%;
+    max-width: 400px;
+  }
+  
+  .login-title {
+    text-align: center;
+    color: #3498db;
+    font-size: 36px;
+    margin-bottom: 5px;
+  }
+  
+  .login-subtitle {
+    text-align: center;
+    color: #7f8c8d;
+    font-size: 14px;
+    margin-bottom: 30px;
+  }
+  
+  .login-form .form-group {
+    margin-bottom: 20px;
+  }
