@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
+// Importamos los componentes mágicos de Recharts
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function Dashboard() {
-  // Estados para guardar nuestras métricas reales
-  const [metricas, setMetricas] = useState({
-    total: 0,
-    mantenimiento: 0,
-    activos: 0
-  });
+  const [metricas, setMetricas] = useState({ total: 0, mantenimiento: 0, activos: 0 });
   const [actividadReciente, setActividadReciente] = useState([]);
+  
+  // Nuevos estados para la data de las gráficas
+  const [datosGraficaEstatus, setDatosGraficaEstatus] = useState([]);
+  const [datosGraficaLabs, setDatosGraficaLabs] = useState([]);
+  
   const [cargando, setCargando] = useState(true);
 
-  // Hook para cargar los datos en cuanto se abre el Dashboard
+  // Colores para nuestra gráfica de dona
+  const COLORES_ESTATUS = ['#27ae60', '#f39c12']; 
+
   useEffect(() => {
     obtenerDatosDashboard();
   }, []);
@@ -20,7 +24,6 @@ function Dashboard() {
     try {
       setCargando(true);
       
-      // Traemos todos los equipos ordenados por fecha (los más nuevos primero)
       const { data, error } = await supabase
         .from('equipos')
         .select('clave_activo, marca, modelo, estatus, fecha_registro, laboratorios(nombre)')
@@ -29,15 +32,34 @@ function Dashboard() {
       if (error) throw error;
 
       if (data) {
-        // Calculamos las métricas leyendo los datos
         const total = data.length;
-        const mantenimiento = data.filter(equipo => equipo.estatus === 'En Mantenimiento').length;
-        const activos = data.filter(equipo => equipo.estatus === 'Activo').length;
+        const mantenimiento = data.filter(e => e.estatus === 'En Mantenimiento').length;
+        const activos = data.filter(e => e.estatus === 'Activo').length;
 
         setMetricas({ total, mantenimiento, activos });
-        
-        // Tomamos solo los primeros 5 para la tabla de actividad reciente
         setActividadReciente(data.slice(0, 5));
+
+        // 1. Preparamos datos para la Gráfica de Dona (Estatus)
+        setDatosGraficaEstatus([
+          { name: 'Operativos', value: activos },
+          { name: 'En Mantenimiento', value: mantenimiento }
+        ]);
+
+        // 2. Preparamos datos para la Gráfica de Barras (Equipos por Laboratorio)
+        // Agrupamos y contamos los equipos por cada laboratorio
+        const conteoLabs = {};
+        data.forEach(equipo => {
+          const nombreLab = equipo.laboratorios?.nombre || 'Sin asignar';
+          conteoLabs[nombreLab] = (conteoLabs[nombreLab] || 0) + 1;
+        });
+
+        // Convertimos ese conteo en el formato que Recharts necesita
+        const datosBarras = Object.keys(conteoLabs).map(llave => ({
+          nombre: llave,
+          Cantidad: conteoLabs[llave]
+        }));
+        
+        setDatosGraficaLabs(datosBarras);
       }
     } catch (error) {
       console.error('Error al cargar el dashboard:', error.message);
@@ -53,7 +75,7 @@ function Dashboard() {
         <p>Resumen general de la Red de Laboratorios</p>
       </header>
 
-      {/* Tarjetas de Métricas (KPIs) Reales */}
+      {/* Tarjetas de Métricas (KPIs) */}
       <section className="kpi-grid">
         <div className="kpi-card">
           <h3>Total Equipos</h3>
@@ -80,7 +102,54 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* Sección de tabla con los últimos equipos registrados */}
+      {/* NUEVA SECCIÓN: Gráficas de Datos */}
+      <section className="charts-grid">
+        {/* Gráfica 1: Dona de Estatus */}
+        <div className="chart-card">
+          <h2>Distribución por Estatus</h2>
+          <div className="chart-wrapper">
+            {cargando ? <p>Cargando gráfica...</p> : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={datosGraficaEstatus}
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {datosGraficaEstatus.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORES_ESTATUS[index % COLORES_ESTATUS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend verticalAlign="bottom" height={36}/>
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Gráfica 2: Barras por Laboratorio */}
+        <div className="chart-card">
+          <h2>Equipos por Laboratorio</h2>
+          <div className="chart-wrapper">
+            {cargando ? <p>Cargando gráfica...</p> : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={datosGraficaLabs} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="nombre" tick={{fontSize: 12}} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip cursor={{fill: '#f4f7f6'}} />
+                  <Bar dataKey="Cantidad" fill="#3498db" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Sección de tabla con los últimos equipos */}
       <section className="recent-activity">
         <h2>Últimos Equipos Registrados</h2>
         <div className="table-container">

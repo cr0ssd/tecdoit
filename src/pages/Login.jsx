@@ -10,18 +10,23 @@ function Login() {
     e.preventDefault();
     setCargando(true);
     try {
-      // Intentamos iniciar sesión con Supabase Auth
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
-      // Si el login es exitoso, App.jsx lo detectará automáticamente y nos dejará entrar
     } catch (error) {
       alert('Error de acceso: Verifica tu correo y contraseña.');
     } finally {
       setCargando(false);
+    }
+  };
+
+  // NUEVO: Función para escuchar las teclas que presionas
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleLogin(e); // Si es Enter, mandamos a llamar el Login
     }
   };
 
@@ -50,6 +55,7 @@ function Login() {
               required 
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
+              onKeyDown={handleKeyDown} /* <-- AQUÍ CONECTAMOS LA MAGIA DEL ENTER */
               placeholder="••••••••" 
             />
           </div>
