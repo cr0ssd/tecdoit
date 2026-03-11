@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 function UsoEquipos() {
   const [registros, setRegistros] = useState([]);
   const [cargando, setCargando] = useState(true);
   
-  // Estado para el formulario de nuevo uso
+  const [mostrarCamara, setMostrarCamara] = useState(false);
+
   const [nuevoUso, setNuevoUso] = useState({
     clave_activo: '',
     usuario_nombre: '',
@@ -19,7 +21,6 @@ function UsoEquipos() {
   async function obtenerRegistros() {
     setCargando(true);
     try {
-      // Traemos el historial de uso y los datos del equipo asociado
       const { data, error } = await supabase
         .from('registro_uso')
         .select('*, equipos(marca, modelo, laboratorios(nombre))')
@@ -38,10 +39,34 @@ function UsoEquipos() {
     setNuevoUso({ ...nuevoUso, [e.target.name]: e.target.value });
   };
 
+  // ACTUALIZADO: Función a prueba de balas para atrapar el código QR
+  const handleQRScan = (resultado) => {
+    if (!resultado) return;
+
+    let textoDetectado = '';
+
+    // Si la librería nos devuelve un arreglo (Versión 2.0+)
+    if (Array.isArray(resultado) && resultado.length > 0) {
+      textoDetectado = resultado[0].rawValue;
+    } 
+    // Si nos devuelve directamente un texto (Versiones anteriores)
+    else if (typeof resultado === 'string') {
+      textoDetectado = resultado;
+    }
+
+    if (textoDetectado) {
+      // 1. Llenamos el input con la clave asegurando el estado previo
+      setNuevoUso(prev => ({ ...prev, clave_activo: textoDetectado }));
+      // 2. Apagamos la cámara automáticamente
+      setMostrarCamara(false);
+      // 3. Pequeño aviso visual (puedes quitarlo si te resulta molesto)
+      alert(`¡Código escaneado: ${textoDetectado}!`);
+    }
+  };
+
   const iniciarUso = async (e) => {
     e.preventDefault();
     try {
-      // 1. Verificar si el equipo existe en el inventario y está activo
       const { data: equipo, error: errorEq } = await supabase
         .from('equipos')
         .select('estatus')
@@ -51,7 +76,6 @@ function UsoEquipos() {
       if (errorEq || !equipo) throw new Error('Equipo no encontrado. Verifica la clave.');
       if (equipo.estatus !== 'Activo') throw new Error('El equipo no está Activo (puede estar en mantenimiento).');
 
-      // 2. Verificar si el equipo ya está siendo usado por alguien más
       const { data: usoActivo } = await supabase
         .from('registro_uso')
         .select('id_uso')
@@ -60,7 +84,6 @@ function UsoEquipos() {
       
       if (usoActivo && usoActivo.length > 0) throw new Error('Este equipo ya está en uso actualmente. Deben finalizar la sesión anterior.');
 
-      // 3. Registrar el inicio de uso
       const { error } = await supabase
         .from('registro_uso')
         .insert([{
@@ -73,7 +96,7 @@ function UsoEquipos() {
       
       alert('¡Sesión de uso iniciada correctamente!');
       setNuevoUso({ clave_activo: '', usuario_nombre: '', proposito: '' });
-      obtenerRegistros(); // Recargar la tabla
+      obtenerRegistros(); 
     } catch (error) {
       alert(error.message);
     }
@@ -81,7 +104,6 @@ function UsoEquipos() {
 
   const finalizarUso = async (id_uso) => {
     try {
-      // Actualizamos el registro poniendo la hora actual y cambiando el estatus
       const { error } = await supabase
         .from('registro_uso')
         .update({ 
@@ -98,7 +120,6 @@ function UsoEquipos() {
     }
   };
 
-  // Función para formatear fechas de manera amigable
   const formatearFecha = (fechaIso) => {
     if (!fechaIso) return '-';
     const fecha = new Date(fechaIso);
@@ -109,16 +130,45 @@ function UsoEquipos() {
     <div className="dashboard-container">
       <header className="dashboard-header">
         <h1>Registro de Uso de Equipos</h1>
-        <p>Control de bitácora y asignación temporal de activos</p>
+        <p>Control de bitácora y asignación temporal mediante QR</p>
       </header>
 
-      {/* Formulario rápido para simular lectura QR */}
       <section className="kpi-card" style={{ marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '16px', marginBottom: '15px', color: '#2c3e50' }}>Registrar Nueva Sesión</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h2 style={{ fontSize: '16px', color: '#2c3e50' }}>Registrar Nueva Sesión</h2>
+          <button 
+            type="button" 
+            className="btn-secondary" 
+            onClick={() => setMostrarCamara(!mostrarCamara)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            {mostrarCamara ? 'Cerrar Cámara' : 'Escanear QR'}
+          </button>
+        </div>
+
+        {mostrarCamara && (
+          <div style={{ maxWidth: '300px', margin: '0 auto 20px auto', border: '2px dashed #3498db', padding: '10px', borderRadius: '8px' }}>
+            <p style={{ textAlign: 'center', fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>Apunta el código QR a tu cámara</p>
+            {/* ACTUALIZADO: Usamos onScan para la versión nueva y mantenemos onResult para máxima compatibilidad */}
+            <Scanner 
+              onScan={(resultado) => handleQRScan(resultado)} 
+              onResult={(resultado) => handleQRScan(resultado)} 
+              onError={(error) => console.log(error?.message)} 
+            />
+          </div>
+        )}
+
         <form onSubmit={iniciarUso} style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
-            <label>Clave del Equipo (Simula QR)</label>
-            <input type="text" name="clave_activo" required value={nuevoUso.clave_activo} onChange={handleInputChange} placeholder="Ej. TEC-COMP-001" />
+            <label>Clave del Equipo</label>
+            <input 
+              type="text" 
+              name="clave_activo" 
+              required 
+              value={nuevoUso.clave_activo} 
+              onChange={handleInputChange} 
+              placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)" 
+            />
           </div>
           <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
             <label>Nombre del Usuario / Alumno</label>
@@ -132,7 +182,6 @@ function UsoEquipos() {
         </form>
       </section>
 
-      {/* Tabla de Bitácora */}
       <section className="table-container">
         <table className="data-table">
           <thead>
