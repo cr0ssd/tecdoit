@@ -39,27 +39,20 @@ function UsoEquipos() {
     setNuevoUso({ ...nuevoUso, [e.target.name]: e.target.value });
   };
 
-  // ACTUALIZADO: Función a prueba de balas para atrapar el código QR
   const handleQRScan = (resultado) => {
     if (!resultado) return;
 
     let textoDetectado = '';
 
-    // Si la librería nos devuelve un arreglo (Versión 2.0+)
     if (Array.isArray(resultado) && resultado.length > 0) {
       textoDetectado = resultado[0].rawValue;
-    } 
-    // Si nos devuelve directamente un texto (Versiones anteriores)
-    else if (typeof resultado === 'string') {
+    } else if (typeof resultado === 'string') {
       textoDetectado = resultado;
     }
 
     if (textoDetectado) {
-      // 1. Llenamos el input con la clave asegurando el estado previo
       setNuevoUso(prev => ({ ...prev, clave_activo: textoDetectado }));
-      // 2. Apagamos la cámara automáticamente
       setMostrarCamara(false);
-      // 3. Pequeño aviso visual (puedes quitarlo si te resulta molesto)
       alert(`¡Código escaneado: ${textoDetectado}!`);
     }
   };
@@ -120,10 +113,24 @@ function UsoEquipos() {
     }
   };
 
+  // ACTUALIZADO: Forzamos la zona horaria a CDMX
   const formatearFecha = (fechaIso) => {
     if (!fechaIso) return '-';
-    const fecha = new Date(fechaIso);
-    return fecha.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute:'2-digit' });
+    
+    // Le agregamos la "Z" al final si no la tiene, para asegurarnos de que el navegador
+    // entienda que el servidor le está mandando la hora en formato UTC (Greenwich).
+    const fechaUtc = fechaIso.includes('Z') ? fechaIso : `${fechaIso}Z`;
+    const fecha = new Date(fechaUtc);
+    
+    // Lo convertimos a la zona horaria de la Ciudad de México
+    return fecha.toLocaleString('es-MX', { 
+      timeZone: 'America/Mexico_City',
+      day: '2-digit', 
+      month: 'short', 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true // Para que muestre a.m. y p.m.
+    });
   };
 
   return (
@@ -149,7 +156,6 @@ function UsoEquipos() {
         {mostrarCamara && (
           <div style={{ maxWidth: '300px', margin: '0 auto 20px auto', border: '2px dashed #3498db', padding: '10px', borderRadius: '8px' }}>
             <p style={{ textAlign: 'center', fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>Apunta el código QR a tu cámara</p>
-            {/* ACTUALIZADO: Usamos onScan para la versión nueva y mantenemos onResult para máxima compatibilidad */}
             <Scanner 
               onScan={(resultado) => handleQRScan(resultado)} 
               onResult={(resultado) => handleQRScan(resultado)} 
