@@ -3,9 +3,17 @@ import { supabase } from '../services/supabase';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function Dashboard() {
-  const [metricas, setMetricas] = useState({ total: 0, mantenimiento: 0, activos: 0, prestados: 0, capexTotal: 0 });
+  const [metricas, setMetricas] = useState({ 
+    total: 0, 
+    mantenimiento: 0, 
+    activos: 0, 
+    prestados: 0, 
+    capexTotal: 0,
+    presupuestoAsignado: 0 // Nuevo KPI
+  });
+  
   const [actividadReciente, setActividadReciente] = useState([]);
-  const [prestamosActivos, setPrestamosActivos] = useState([]); // Nueva tabla
+  const [prestamosActivos, setPrestamosActivos] = useState([]);
   
   const [datosGraficaEstatus, setDatosGraficaEstatus] = useState([]);
   const [datosGraficaLabs, setDatosGraficaLabs] = useState([]);
@@ -21,18 +29,26 @@ function Dashboard() {
     try {
       setCargando(true);
       
-      // 1. Obtener Equipos (para totales y CAPEX)
+      // 1. Obtener Presupuesto Global
+      const { data: dataPresupuesto, error: errPres } = await supabase
+        .from('presupuesto_global')
+        .select('monto')
+        .eq('id', 1)
+        .single();
+      if (errPres && errPres.code !== 'PGRST116') throw errPres;
+
+      // 2. Obtener Equipos (para totales y CAPEX)
       const { data: dataEquipos, error: errEq } = await supabase
         .from('equipos')
         .select('clave_activo, marca, modelo, estatus, costo, fecha_registro, laboratorios(nombre)')
         .order('fecha_registro', { ascending: false });
       if (errEq) throw errEq;
 
-      // 2. Obtener Costos de Mantenimiento (para CAPEX)
+      // 3. Obtener Costos de Mantenimiento (para CAPEX)
       const { data: dataMant, error: errMant } = await supabase.from('mantenimientos').select('costo');
       if (errMant) throw errMant;
 
-      // 3. Obtener Equipos en Uso (para Préstamos Activos)
+      // 4. Obtener Equipos en Uso (para Préstamos Activos)
       const { data: dataUso, error: errUso } = await supabase
         .from('registro_uso')
         .select('*, equipos(marca, modelo, laboratorios(nombre))')
@@ -40,29 +56,26 @@ function Dashboard() {
       if (errUso) throw errUso;
 
       if (dataEquipos) {
-        // Cálculos de KPI
         const total = dataEquipos.length;
         const mantenimiento = dataEquipos.filter(e => e.estatus === 'En Mantenimiento').length;
         const activos = dataEquipos.filter(e => e.estatus === 'Activo').length;
         const prestados = dataUso.length;
 
-        // Cálculo de CAPEX (Suma de Equipos + Mantenimientos)
         const capexEquipos = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
         const capexMantenimientos = dataMant ? dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0) : 0;
         const capexTotal = capexEquipos + capexMantenimientos;
+        const presupuestoAsignado = dataPresupuesto ? Number(dataPresupuesto.monto) : 0;
 
-        setMetricas({ total, mantenimiento, activos, prestados, capexTotal });
+        setMetricas({ total, mantenimiento, activos, prestados, capexTotal, presupuestoAsignado });
         setActividadReciente(dataEquipos.slice(0, 5));
         setPrestamosActivos(dataUso);
 
-        // Gráfica de Dona (incluyendo prestados para saber dónde están los "Activos")
         setDatosGraficaEstatus([
           { name: 'Disponibles', value: activos - prestados },
           { name: 'En Mantenimiento', value: mantenimiento },
           { name: 'En Uso (Prestados)', value: prestados }
         ]);
 
-        // Gráfica de Barras (Equipos por Lab)
         const conteoLabs = {};
         dataEquipos.forEach(equipo => {
           const nombreLab = equipo.laboratorios?.nombre || 'Sin asignar';
@@ -78,17 +91,60 @@ function Dashboard() {
     }
   }
 
-  // Formateador de moneda
+  // NUEVO: Función para que el director ajuste el presupuesto
+  const ajustarPresupuesto = async () => {
+    // Usamos un prompt nativo para hacerlo rápido y seguro
+    const nuevoMonto = window.prompt(
+      'Ajuste de Presupuesto Global\nIngresa el nuevo techo financiero para los laboratorios (sin comas):', 
+      metricas.presupuestoAsignado
+    );
+    
+    // Si cancela o lo deja vacío, no hacemos nada
+    if (nuevoMonto === null || nuevoMonto.trim() === '') return;
+
+    const montoNumerico = parseFloat(nuevoMonto);
+    
+    if (isNaN(montoNumerico) || montoNumerico < 0) {
+      alert('Por favor, ingresa una cantidad numérica válida.');
+      return;
+    }
+
+    try {
+      // Actualizamos el registro con ID 1 en nuestra nueva tabla
+      const { error } = await supabase
+        .from('presupuesto_global')
+        .update({ monto: montoNumerico })
+        .eq('id', 1);
+
+      if (error) throw error;
+      
+      alert('¡Presupuesto actualizado exitosamente!');
+      obtenerDatosDashboard(); // Recargamos para ver los números reflejados
+    } catch (error) {
+      alert('Error al actualizar el presupuesto: ' + error.message);
+    }
+  };
+
   const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
+
+  // Cálculos financieros rápidos para la UI
+  const dineroDisponible = metricas.presupuestoAsignado - metricas.capexTotal;
+  const porcentajeGastado = metricas.presupuestoAsignado > 0 ? ((metricas.capexTotal / metricas.presupuestoAsignado) * 100).toFixed(1) : 0;
 
   return (
     <div className="dashboard-container">
-      <header className="dashboard-header">
-        <h1>Panel de Control</h1>
-        <p>Resumen general de la Red de Laboratorios</p>
+      <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1>Panel de Control</h1>
+          <p>Resumen general de la Red de Laboratorios</p>
+        </div>
+        {/* Botón exclusivo para ajustar presupuesto */}
+        <button className="btn-secondary" onClick={ajustarPresupuesto} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          Ajustar Presupuesto
+        </button>
       </header>
 
-      {/* Tarjetas de Métricas (KPIs) - Secciones Reorganizadas */}
+      {/* Tarjetas de Métricas (KPIs) */}
       <section className="kpi-grid">
         <div className="kpi-card">
           <h3>Total Equipos</h3>
@@ -108,12 +164,31 @@ function Dashboard() {
           <span className="kpi-status warning">Preventivo o Correctivo</span>
         </div>
 
-        <div className="kpi-card">
-          <h3>Inversión (CAPEX)</h3>
-          <p className="kpi-number" style={{ color: '#8e44ad', fontSize: '28px' }}>
-            {cargando ? '...' : formatoMoneda(metricas.capexTotal)}
+        {/* TARJETA FINANCIERA REDISEÑADA */}
+        <div className="kpi-card" style={{ borderTop: '4px solid #8e44ad' }}>
+          <h3>Presupuesto Disponible</h3>
+          <p className="kpi-number" style={{ color: dineroDisponible < 0 ? '#e74c3c' : '#8e44ad', fontSize: '28px' }}>
+            {cargando ? '...' : formatoMoneda(dineroDisponible)}
           </p>
-          <span className="kpi-status" style={{ backgroundColor: '#f5eef8', color: '#8e44ad' }}>Equipos + Mantenimiento</span>
+          
+          <div style={{ marginTop: '10px', fontSize: '12px', color: '#7f8c8d', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Asignado:</span>
+              <strong>{formatoMoneda(metricas.presupuestoAsignado)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>CAPEX (Gastado):</span>
+              <strong style={{ color: '#e74c3c' }}>{formatoMoneda(metricas.capexTotal)}</strong>
+            </div>
+            {/* Pequeña barra de progreso visual */}
+            <div style={{ width: '100%', height: '6px', backgroundColor: '#ecf0f1', borderRadius: '3px', marginTop: '5px', overflow: 'hidden' }}>
+              <div style={{ 
+                height: '100%', 
+                backgroundColor: porcentajeGastado > 90 ? '#e74c3c' : '#8e44ad', 
+                width: `${Math.min(porcentajeGastado, 100)}%` 
+              }}></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -153,7 +228,6 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* Tablas de Información Rápida (Lado a Lado) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '30px' }}>
         <section className="recent-activity">
           <h2>Equipos en Uso (Prestados)</h2>
