@@ -9,7 +9,9 @@ function Dashboard() {
     activos: 0, 
     prestados: 0, 
     capexTotal: 0,
-    presupuestoAsignado: 0 // Nuevo KPI
+    capexEquipos: 0,          // NUEVO: Guardamos el gasto de equipos
+    capexMantenimientos: 0,   // NUEVO: Guardamos el gasto de mantenimientos
+    presupuestoAsignado: 0 
   });
   
   const [actividadReciente, setActividadReciente] = useState([]);
@@ -29,7 +31,6 @@ function Dashboard() {
     try {
       setCargando(true);
       
-      // 1. Obtener Presupuesto Global
       const { data: dataPresupuesto, error: errPres } = await supabase
         .from('presupuesto_global')
         .select('monto')
@@ -37,18 +38,15 @@ function Dashboard() {
         .single();
       if (errPres && errPres.code !== 'PGRST116') throw errPres;
 
-      // 2. Obtener Equipos (para totales y CAPEX)
       const { data: dataEquipos, error: errEq } = await supabase
         .from('equipos')
         .select('clave_activo, marca, modelo, estatus, costo, fecha_registro, laboratorios(nombre)')
         .order('fecha_registro', { ascending: false });
       if (errEq) throw errEq;
 
-      // 3. Obtener Costos de Mantenimiento (para CAPEX)
       const { data: dataMant, error: errMant } = await supabase.from('mantenimientos').select('costo');
       if (errMant) throw errMant;
 
-      // 4. Obtener Equipos en Uso (para Préstamos Activos)
       const { data: dataUso, error: errUso } = await supabase
         .from('registro_uso')
         .select('*, equipos(marca, modelo, laboratorios(nombre))')
@@ -61,12 +59,14 @@ function Dashboard() {
         const activos = dataEquipos.filter(e => e.estatus === 'Activo').length;
         const prestados = dataUso.length;
 
+        // Separamos los gastos para poder mostrarlos en la UI
         const capexEquipos = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
         const capexMantenimientos = dataMant ? dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0) : 0;
         const capexTotal = capexEquipos + capexMantenimientos;
         const presupuestoAsignado = dataPresupuesto ? Number(dataPresupuesto.monto) : 0;
 
-        setMetricas({ total, mantenimiento, activos, prestados, capexTotal, presupuestoAsignado });
+        // Actualizamos el estado con los datos desglosados
+        setMetricas({ total, mantenimiento, activos, prestados, capexTotal, capexEquipos, capexMantenimientos, presupuestoAsignado });
         setActividadReciente(dataEquipos.slice(0, 5));
         setPrestamosActivos(dataUso);
 
@@ -91,15 +91,12 @@ function Dashboard() {
     }
   }
 
-  // NUEVO: Función para que el director ajuste el presupuesto
   const ajustarPresupuesto = async () => {
-    // Usamos un prompt nativo para hacerlo rápido y seguro
     const nuevoMonto = window.prompt(
-      'Ajuste de Presupuesto Global\nIngresa el nuevo techo financiero para los laboratorios (sin comas):', 
+      'Ajuste de Presupuesto Global\nIngresa el nuevo techo financiero para los laboratorios (sin comas ni símbolos):', 
       metricas.presupuestoAsignado
     );
     
-    // Si cancela o lo deja vacío, no hacemos nada
     if (nuevoMonto === null || nuevoMonto.trim() === '') return;
 
     const montoNumerico = parseFloat(nuevoMonto);
@@ -110,7 +107,6 @@ function Dashboard() {
     }
 
     try {
-      // Actualizamos el registro con ID 1 en nuestra nueva tabla
       const { error } = await supabase
         .from('presupuesto_global')
         .update({ monto: montoNumerico })
@@ -119,7 +115,7 @@ function Dashboard() {
       if (error) throw error;
       
       alert('¡Presupuesto actualizado exitosamente!');
-      obtenerDatosDashboard(); // Recargamos para ver los números reflejados
+      obtenerDatosDashboard(); 
     } catch (error) {
       alert('Error al actualizar el presupuesto: ' + error.message);
     }
@@ -127,7 +123,6 @@ function Dashboard() {
 
   const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
 
-  // Cálculos financieros rápidos para la UI
   const dineroDisponible = metricas.presupuestoAsignado - metricas.capexTotal;
   const porcentajeGastado = metricas.presupuestoAsignado > 0 ? ((metricas.capexTotal / metricas.presupuestoAsignado) * 100).toFixed(1) : 0;
 
@@ -138,13 +133,11 @@ function Dashboard() {
           <h1>Panel de Control</h1>
           <p>Resumen general de la Red de Laboratorios</p>
         </div>
-        {/* Botón exclusivo para ajustar presupuesto */}
         <button className="btn-secondary" onClick={ajustarPresupuesto} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          Ajustar Presupuesto
+          ✏️ Ajustar Presupuesto
         </button>
       </header>
 
-      {/* Tarjetas de Métricas (KPIs) */}
       <section className="kpi-grid">
         <div className="kpi-card">
           <h3>Total Equipos</h3>
@@ -164,24 +157,27 @@ function Dashboard() {
           <span className="kpi-status warning">Preventivo o Correctivo</span>
         </div>
 
-        {/* TARJETA FINANCIERA REDISEÑADA */}
-        <div className="kpi-card" style={{ borderTop: '4px solid #8e44ad' }}>
+        {/* TARJETA FINANCIERA CON DESGLOSE DETALLADO */}
+        <div className="kpi-card" style={{ borderTop: '4px solid #8e44ad', minWidth: '280px' }}>
           <h3>Presupuesto Disponible</h3>
           <p className="kpi-number" style={{ color: dineroDisponible < 0 ? '#e74c3c' : '#8e44ad', fontSize: '28px' }}>
             {cargando ? '...' : formatoMoneda(dineroDisponible)}
           </p>
           
-          <div style={{ marginTop: '10px', fontSize: '12px', color: '#7f8c8d', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Asignado:</span>
+          <div style={{ marginTop: '10px', fontSize: '12px', color: '#7f8c8d', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>
+              <span>Fondo Asignado:</span>
               <strong>{formatoMoneda(metricas.presupuestoAsignado)}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>CAPEX (Gastado):</span>
-              <strong style={{ color: '#e74c3c' }}>{formatoMoneda(metricas.capexTotal)}</strong>
+              <span>Inversión (Equipos):</span>
+              <strong style={{ color: '#e74c3c' }}>-{formatoMoneda(metricas.capexEquipos)}</strong>
             </div>
-            {/* Pequeña barra de progreso visual */}
-            <div style={{ width: '100%', height: '6px', backgroundColor: '#ecf0f1', borderRadius: '3px', marginTop: '5px', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Gastos (Mantenimiento):</span>
+              <strong style={{ color: '#e74c3c' }}>-{formatoMoneda(metricas.capexMantenimientos)}</strong>
+            </div>
+            <div style={{ width: '100%', height: '6px', backgroundColor: '#ecf0f1', borderRadius: '3px', marginTop: '2px', overflow: 'hidden' }}>
               <div style={{ 
                 height: '100%', 
                 backgroundColor: porcentajeGastado > 90 ? '#e74c3c' : '#8e44ad', 
