@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
-// Importamos los componentes mágicos de Recharts
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function Dashboard() {
-  const [metricas, setMetricas] = useState({ total: 0, mantenimiento: 0, activos: 0 });
+  const [metricas, setMetricas] = useState({ total: 0, mantenimiento: 0, activos: 0, prestados: 0, capexTotal: 0 });
   const [actividadReciente, setActividadReciente] = useState([]);
+  const [prestamosActivos, setPrestamosActivos] = useState([]); // Nueva tabla
   
-  // Nuevos estados para la data de las gráficas
   const [datosGraficaEstatus, setDatosGraficaEstatus] = useState([]);
   const [datosGraficaLabs, setDatosGraficaLabs] = useState([]);
-  
   const [cargando, setCargando] = useState(true);
 
-  // Colores para nuestra gráfica de dona
-  const COLORES_ESTATUS = ['#27ae60', '#f39c12']; 
+  const COLORES_ESTATUS = ['#27ae60', '#f39c12', '#3498db']; 
 
   useEffect(() => {
     obtenerDatosDashboard();
@@ -24,41 +21,54 @@ function Dashboard() {
     try {
       setCargando(true);
       
-      const { data, error } = await supabase
+      // 1. Obtener Equipos (para totales y CAPEX)
+      const { data: dataEquipos, error: errEq } = await supabase
         .from('equipos')
-        .select('clave_activo, marca, modelo, estatus, fecha_registro, laboratorios(nombre)')
+        .select('clave_activo, marca, modelo, estatus, costo, fecha_registro, laboratorios(nombre)')
         .order('fecha_registro', { ascending: false });
+      if (errEq) throw errEq;
 
-      if (error) throw error;
+      // 2. Obtener Costos de Mantenimiento (para CAPEX)
+      const { data: dataMant, error: errMant } = await supabase.from('mantenimientos').select('costo');
+      if (errMant) throw errMant;
 
-      if (data) {
-        const total = data.length;
-        const mantenimiento = data.filter(e => e.estatus === 'En Mantenimiento').length;
-        const activos = data.filter(e => e.estatus === 'Activo').length;
+      // 3. Obtener Equipos en Uso (para Préstamos Activos)
+      const { data: dataUso, error: errUso } = await supabase
+        .from('registro_uso')
+        .select('*, equipos(marca, modelo, laboratorios(nombre))')
+        .eq('estatus', 'En uso');
+      if (errUso) throw errUso;
 
-        setMetricas({ total, mantenimiento, activos });
-        setActividadReciente(data.slice(0, 5));
+      if (dataEquipos) {
+        // Cálculos de KPI
+        const total = dataEquipos.length;
+        const mantenimiento = dataEquipos.filter(e => e.estatus === 'En Mantenimiento').length;
+        const activos = dataEquipos.filter(e => e.estatus === 'Activo').length;
+        const prestados = dataUso.length;
 
-        // 1. Preparamos datos para la Gráfica de Dona (Estatus)
+        // Cálculo de CAPEX (Suma de Equipos + Mantenimientos)
+        const capexEquipos = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
+        const capexMantenimientos = dataMant ? dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0) : 0;
+        const capexTotal = capexEquipos + capexMantenimientos;
+
+        setMetricas({ total, mantenimiento, activos, prestados, capexTotal });
+        setActividadReciente(dataEquipos.slice(0, 5));
+        setPrestamosActivos(dataUso);
+
+        // Gráfica de Dona (incluyendo prestados para saber dónde están los "Activos")
         setDatosGraficaEstatus([
-          { name: 'Operativos', value: activos },
-          { name: 'En Mantenimiento', value: mantenimiento }
+          { name: 'Disponibles', value: activos - prestados },
+          { name: 'En Mantenimiento', value: mantenimiento },
+          { name: 'En Uso (Prestados)', value: prestados }
         ]);
 
-        // 2. Preparamos datos para la Gráfica de Barras (Equipos por Laboratorio)
-        // Agrupamos y contamos los equipos por cada laboratorio
+        // Gráfica de Barras (Equipos por Lab)
         const conteoLabs = {};
-        data.forEach(equipo => {
+        dataEquipos.forEach(equipo => {
           const nombreLab = equipo.laboratorios?.nombre || 'Sin asignar';
           conteoLabs[nombreLab] = (conteoLabs[nombreLab] || 0) + 1;
         });
-
-        // Convertimos ese conteo en el formato que Recharts necesita
-        const datosBarras = Object.keys(conteoLabs).map(llave => ({
-          nombre: llave,
-          Cantidad: conteoLabs[llave]
-        }));
-        
+        const datosBarras = Object.keys(conteoLabs).map(llave => ({ nombre: llave, Cantidad: conteoLabs[llave] }));
         setDatosGraficaLabs(datosBarras);
       }
     } catch (error) {
@@ -68,6 +78,9 @@ function Dashboard() {
     }
   }
 
+  // Formateador de moneda
+  const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
@@ -75,7 +88,7 @@ function Dashboard() {
         <p>Resumen general de la Red de Laboratorios</p>
       </header>
 
-      {/* Tarjetas de Métricas (KPIs) */}
+      {/* Tarjetas de Métricas (KPIs) - Secciones Reorganizadas */}
       <section className="kpi-grid">
         <div className="kpi-card">
           <h3>Total Equipos</h3>
@@ -84,43 +97,35 @@ function Dashboard() {
         </div>
         
         <div className="kpi-card">
+          <h3>Equipos en Uso</h3>
+          <p className="kpi-number" style={{ color: '#3498db' }}>{cargando ? '...' : metricas.prestados}</p>
+          <span className="kpi-status info">Préstamos activos</span>
+        </div>
+
+        <div className="kpi-card">
           <h3>En Mantenimiento</h3>
           <p className="kpi-number warning-text">{cargando ? '...' : metricas.mantenimiento}</p>
           <span className="kpi-status warning">Preventivo o Correctivo</span>
         </div>
 
         <div className="kpi-card">
-          <h3>Equipos Operativos</h3>
-          <p className="kpi-number" style={{ color: '#27ae60' }}>{cargando ? '...' : metricas.activos}</p>
-          <span className="kpi-status ok">Listos para uso</span>
-        </div>
-
-        <div className="kpi-card">
-          <h3>Horas de Uso (Mes)</h3>
-          <p className="kpi-number">0</p>
-          <span className="kpi-status info">Módulo QR pendiente</span>
+          <h3>Inversión (CAPEX)</h3>
+          <p className="kpi-number" style={{ color: '#8e44ad', fontSize: '28px' }}>
+            {cargando ? '...' : formatoMoneda(metricas.capexTotal)}
+          </p>
+          <span className="kpi-status" style={{ backgroundColor: '#f5eef8', color: '#8e44ad' }}>Equipos + Mantenimiento</span>
         </div>
       </section>
 
-      {/* NUEVA SECCIÓN: Gráficas de Datos */}
       <section className="charts-grid">
-        {/* Gráfica 1: Dona de Estatus */}
         <div className="chart-card">
           <h2>Distribución por Estatus</h2>
           <div className="chart-wrapper">
             {cargando ? <p>Cargando gráfica...</p> : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={datosGraficaEstatus}
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {datosGraficaEstatus.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORES_ESTATUS[index % COLORES_ESTATUS.length]} />
-                    ))}
+                  <Pie data={datosGraficaEstatus} innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value">
+                    {datosGraficaEstatus.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_ESTATUS[index % COLORES_ESTATUS.length]} />)}
                   </Pie>
                   <Tooltip />
                   <Legend verticalAlign="bottom" height={36}/>
@@ -130,7 +135,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Gráfica 2: Barras por Laboratorio */}
         <div className="chart-card">
           <h2>Equipos por Laboratorio</h2>
           <div className="chart-wrapper">
@@ -141,7 +145,7 @@ function Dashboard() {
                   <XAxis dataKey="nombre" tick={{fontSize: 12}} />
                   <YAxis allowDecimals={false} />
                   <Tooltip cursor={{fill: '#f4f7f6'}} />
-                  <Bar dataKey="Cantidad" fill="#3498db" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Cantidad" fill="#2c3e50" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -149,47 +153,68 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* Sección de tabla con los últimos equipos */}
-      <section className="recent-activity">
-        <h2>Últimos Equipos Registrados</h2>
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Clave / Equipo</th>
-                <th>Laboratorio</th>
-                <th>Estatus</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cargando ? (
+      {/* Tablas de Información Rápida (Lado a Lado) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '30px' }}>
+        <section className="recent-activity">
+          <h2>Equipos en Uso (Prestados)</h2>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="3" style={{ textAlign: 'center', padding: '20px' }}>Calculando métricas...</td>
+                  <th>Clave / Equipo</th>
+                  <th>Laboratorio Origen</th>
+                  <th>Usuario Actual</th>
                 </tr>
-              ) : actividadReciente.length === 0 ? (
+              </thead>
+              <tbody>
+                {cargando ? (
+                  <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px' }}>Consultando usos...</td></tr>
+                ) : prestamosActivos.length === 0 ? (
+                  <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px' }}>No hay equipos prestados en este momento.</td></tr>
+                ) : (
+                  prestamosActivos.map((uso) => (
+                    <tr key={uso.id_uso}>
+                      <td><strong>{uso.clave_activo}</strong><br/><small>{uso.equipos?.marca}</small></td>
+                      <td>{uso.equipos?.laboratorios?.nombre || 'N/A'}</td>
+                      <td>{uso.usuario_nombre}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="recent-activity">
+          <h2>Últimos Equipos Registrados</h2>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="3" style={{ textAlign: 'center', padding: '20px' }}>Aún no hay actividad reciente.</td>
+                  <th>Clave / Equipo</th>
+                  <th>Laboratorio</th>
+                  <th>Estatus</th>
                 </tr>
-              ) : (
-                actividadReciente.map((item) => (
-                  <tr key={item.clave_activo}>
-                    <td>
-                      <strong>{item.clave_activo}</strong><br/>
-                      <small>{item.marca} {item.modelo}</small>
-                    </td>
-                    <td>{item.laboratorios?.nombre || 'Sin asignar'}</td>
-                    <td>
-                      <span className={`badge ${item.estatus === 'Activo' ? 'ok' : 'warning'}`}>
-                        {item.estatus}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {cargando ? (
+                  <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px' }}>Cargando actividad...</td></tr>
+                ) : actividadReciente.length === 0 ? (
+                  <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px' }}>Aún no hay actividad.</td></tr>
+                ) : (
+                  actividadReciente.map((item) => (
+                    <tr key={item.clave_activo}>
+                      <td><strong>{item.clave_activo}</strong><br/><small>{item.marca}</small></td>
+                      <td>{item.laboratorios?.nombre || 'Sin asignar'}</td>
+                      <td><span className={`badge ${item.estatus === 'Activo' ? 'ok' : 'warning'}`}>{item.estatus}</span></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
