@@ -55,7 +55,7 @@ function Login() {
               required 
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
-              onKeyDown={handleKeyDown} /* <-- AQUÍ CONECTAMOS LA MAGIA DEL ENTER */
+              onKeyDown={handleKeyDown} 
               placeholder="••••••••" 
             />
           </div>
