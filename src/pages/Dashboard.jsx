@@ -4,18 +4,12 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 
 function Dashboard() {
   const [metricas, setMetricas] = useState({ 
-    total: 0, 
-    mantenimiento: 0, 
-    activos: 0, 
-    prestados: 0, 
-    capexTotal: 0,
-    capexEquipos: 0,          // NUEVO: Guardamos el gasto de equipos
-    capexMantenimientos: 0,   // NUEVO: Guardamos el gasto de mantenimientos
-    presupuestoAsignado: 0 
+    total: 0, mantenimiento: 0, activos: 0, prestados: 0, capexTotal: 0, capexEquipos: 0, capexMantenimientos: 0, presupuestoAsignado: 0 
   });
   
   const [actividadReciente, setActividadReciente] = useState([]);
   const [prestamosActivos, setPrestamosActivos] = useState([]);
+  const [notificaciones, setNotificaciones] = useState([]); // NUEVO: Estado para alertas
   
   const [datosGraficaEstatus, setDatosGraficaEstatus] = useState([]);
   const [datosGraficaLabs, setDatosGraficaLabs] = useState([]);
@@ -31,44 +25,57 @@ function Dashboard() {
     try {
       setCargando(true);
       
-      const { data: dataPresupuesto, error: errPres } = await supabase
-        .from('presupuesto_global')
-        .select('monto')
-        .eq('id', 1)
-        .single();
-      if (errPres && errPres.code !== 'PGRST116') throw errPres;
-
+      const { data: dataPresupuesto } = await supabase.from('presupuesto_global').select('monto').eq('id', 1).single();
+      
       const { data: dataEquipos, error: errEq } = await supabase
         .from('equipos')
-        .select('clave_activo, marca, modelo, estatus, costo, fecha_registro, laboratorios(nombre)')
+        .select('clave_activo, marca, modelo, estatus, costo, fecha_registro, horas_acumuladas, limite_horas, mantenimiento_urgente, laboratorios(nombre)')
         .order('fecha_registro', { ascending: false });
       if (errEq) throw errEq;
 
-      const { data: dataMant, error: errMant } = await supabase.from('mantenimientos').select('costo');
-      if (errMant) throw errMant;
-
-      const { data: dataUso, error: errUso } = await supabase
+      const { data: dataMant } = await supabase.from('mantenimientos').select('costo');
+      
+      const { data: dataUso } = await supabase
         .from('registro_uso')
         .select('*, equipos(marca, modelo, laboratorios(nombre))')
         .eq('estatus', 'En uso');
-      if (errUso) throw errUso;
+
+      // NUEVO: Consultamos el historial de notificaciones desde la tabla post1
+      const { data: dataNotificaciones } = await supabase
+        .from('post1')
+        .select('*, author1(nombre)')
+        .eq('leida', false)
+        .order('fecha', { ascending: false });
 
       if (dataEquipos) {
         const total = dataEquipos.length;
         const mantenimiento = dataEquipos.filter(e => e.estatus === 'En Mantenimiento').length;
         const activos = dataEquipos.filter(e => e.estatus === 'Activo').length;
-        const prestados = dataUso.length;
+        const prestados = dataUso ? dataUso.length : 0;
 
-        // Separamos los gastos para poder mostrarlos en la UI
         const capexEquipos = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
         const capexMantenimientos = dataMant ? dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0) : 0;
         const capexTotal = capexEquipos + capexMantenimientos;
         const presupuestoAsignado = dataPresupuesto ? Number(dataPresupuesto.monto) : 0;
 
-        // Actualizamos el estado con los datos desglosados
+        // NUEVO: Generamos alertas dinámicas basadas en las horas y estatus urgente
+        const alertasDinamicas = dataEquipos
+          .filter(e => e.mantenimiento_urgente || (e.horas_acumuladas || 0) >= (e.limite_horas || 8))
+          .map(e => ({
+            id: `din-${e.clave_activo}`,
+            clave_activo: e.clave_activo,
+            mensaje: e.mantenimiento_urgente ? 'Requiere mantenimiento URGENTE' : `Superó el límite de ${e.limite_horas} horas de uso.`,
+            tipo: e.mantenimiento_urgente ? 'URGENTE' : 'HORAS',
+            fecha: new Date().toISOString(),
+            author1: { nombre: 'Sistema Automático' }
+          }));
+
         setMetricas({ total, mantenimiento, activos, prestados, capexTotal, capexEquipos, capexMantenimientos, presupuestoAsignado });
         setActividadReciente(dataEquipos.slice(0, 5));
-        setPrestamosActivos(dataUso);
+        setPrestamosActivos(dataUso || []);
+        
+        // Unimos las alertas dinámicas con los registros guardados
+        setNotificaciones([...alertasDinamicas, ...(dataNotificaciones || [])]);
 
         setDatosGraficaEstatus([
           { name: 'Disponibles', value: activos - prestados },
@@ -96,25 +103,12 @@ function Dashboard() {
       'Ajuste de Presupuesto Global\nIngresa el nuevo techo financiero para los laboratorios (sin comas ni símbolos):', 
       metricas.presupuestoAsignado
     );
-    
     if (nuevoMonto === null || nuevoMonto.trim() === '') return;
-
     const montoNumerico = parseFloat(nuevoMonto);
-    
-    if (isNaN(montoNumerico) || montoNumerico < 0) {
-      alert('Por favor, ingresa una cantidad numérica válida.');
-      return;
-    }
+    if (isNaN(montoNumerico) || montoNumerico < 0) return alert('Ingresa una cantidad numérica válida.');
 
     try {
-      const { error } = await supabase
-        .from('presupuesto_global')
-        .update({ monto: montoNumerico })
-        .eq('id', 1);
-
-      if (error) throw error;
-      
-      alert('¡Presupuesto actualizado exitosamente!');
+      await supabase.from('presupuesto_global').update({ monto: montoNumerico }).eq('id', 1);
       obtenerDatosDashboard(); 
     } catch (error) {
       alert('Error al actualizar el presupuesto: ' + error.message);
@@ -122,6 +116,7 @@ function Dashboard() {
   };
 
   const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
+  const formatearFecha = (fechaIso) => new Date(fechaIso).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute:'2-digit' });
 
   const dineroDisponible = metricas.presupuestoAsignado - metricas.capexTotal;
   const porcentajeGastado = metricas.presupuestoAsignado > 0 ? ((metricas.capexTotal / metricas.presupuestoAsignado) * 100).toFixed(1) : 0;
@@ -137,6 +132,30 @@ function Dashboard() {
           ✏️ Ajustar Presupuesto
         </button>
       </header>
+
+      {/* NUEVA SECCIÓN: Centro de Notificaciones */}
+      {notificaciones.length > 0 && (
+        <section style={{ backgroundColor: '#fff3f3', borderLeft: '4px solid #e74c3c', padding: '15px', borderRadius: '4px', marginBottom: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ color: '#c0392b', marginTop: 0, marginBottom: '10px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          Alertas de Mantenimiento ({notificaciones.length})
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {notificaciones.map((notif, index) => (
+              <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid #fadbd8' }}>
+                <div>
+                  <strong style={{ color: '#e74c3c' }}>{notif.clave_activo}</strong> - {notif.mensaje}
+                  <div style={{ fontSize: '11px', color: '#7f8c8d', marginTop: '4px' }}>
+                    Reportado por: {notif.author1?.nombre || 'Sistema'} | {formatearFecha(notif.fecha)}
+                  </div>
+                </div>
+                <span className={`badge ${notif.tipo === 'URGENTE' ? 'warning' : 'info'}`} style={{ backgroundColor: notif.tipo === 'URGENTE' ? '#e74c3c' : '#f39c12', color: '#fff' }}>
+                  {notif.tipo}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="kpi-grid">
         <div className="kpi-card">
@@ -157,13 +176,11 @@ function Dashboard() {
           <span className="kpi-status warning">Preventivo o Correctivo</span>
         </div>
 
-        {/* TARJETA FINANCIERA CON DESGLOSE DETALLADO */}
         <div className="kpi-card" style={{ borderTop: '4px solid #8e44ad', minWidth: '280px' }}>
           <h3>Presupuesto Disponible</h3>
           <p className="kpi-number" style={{ color: dineroDisponible < 0 ? '#e74c3c' : '#8e44ad', fontSize: '28px' }}>
             {cargando ? '...' : formatoMoneda(dineroDisponible)}
           </p>
-          
           <div style={{ marginTop: '10px', fontSize: '12px', color: '#7f8c8d', display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>
               <span>Fondo Asignado:</span>
@@ -178,11 +195,7 @@ function Dashboard() {
               <strong style={{ color: '#e74c3c' }}>-{formatoMoneda(metricas.capexMantenimientos)}</strong>
             </div>
             <div style={{ width: '100%', height: '6px', backgroundColor: '#ecf0f1', borderRadius: '3px', marginTop: '2px', overflow: 'hidden' }}>
-              <div style={{ 
-                height: '100%', 
-                backgroundColor: porcentajeGastado > 90 ? '#e74c3c' : '#8e44ad', 
-                width: `${Math.min(porcentajeGastado, 100)}%` 
-              }}></div>
+              <div style={{ height: '100%', backgroundColor: porcentajeGastado > 90 ? '#e74c3c' : '#8e44ad', width: `${Math.min(porcentajeGastado, 100)}%` }}></div>
             </div>
           </div>
         </div>
