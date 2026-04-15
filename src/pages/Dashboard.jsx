@@ -9,8 +9,10 @@ function Dashboard() {
   
   const [actividadReciente, setActividadReciente] = useState([]);
   const [prestamosActivos, setPrestamosActivos] = useState([]);
-  const [notificaciones, setNotificaciones] = useState([]); // NUEVO: Estado para alertas
   
+  const [notificaciones, setNotificaciones] = useState([]); 
+  const [mostrarMenuNotificaciones, setMostrarMenuNotificaciones] = useState(false);
+
   const [datosGraficaEstatus, setDatosGraficaEstatus] = useState([]);
   const [datosGraficaLabs, setDatosGraficaLabs] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -40,7 +42,6 @@ function Dashboard() {
         .select('*, equipos(marca, modelo, laboratorios(nombre))')
         .eq('estatus', 'En uso');
 
-      // NUEVO: Consultamos el historial de notificaciones desde la tabla post1
       const { data: dataNotificaciones } = await supabase
         .from('post1')
         .select('*, author1(nombre)')
@@ -58,23 +59,21 @@ function Dashboard() {
         const capexTotal = capexEquipos + capexMantenimientos;
         const presupuestoAsignado = dataPresupuesto ? Number(dataPresupuesto.monto) : 0;
 
-        // NUEVO: Generamos alertas dinámicas basadas en las horas y estatus urgente
         const alertasDinamicas = dataEquipos
           .filter(e => e.mantenimiento_urgente || (e.horas_acumuladas || 0) >= (e.limite_horas || 8))
           .map(e => ({
             id: `din-${e.clave_activo}`,
             clave_activo: e.clave_activo,
-            mensaje: e.mantenimiento_urgente ? 'Requiere mantenimiento URGENTE' : `Superó el límite de ${e.limite_horas} horas de uso.`,
-            tipo: e.mantenimiento_urgente ? 'URGENTE' : 'HORAS',
+            mensaje: e.mantenimiento_urgente ? 'Requiere mantenimiento urgente.' : `Superó el límite de ${e.limite_horas} horas de uso.`,
+            tipo: e.mantenimiento_urgente ? 'Critico' : 'Advertencia',
             fecha: new Date().toISOString(),
-            author1: { nombre: 'Sistema Automático' }
+            author1: { nombre: 'Sistema' }
           }));
 
         setMetricas({ total, mantenimiento, activos, prestados, capexTotal, capexEquipos, capexMantenimientos, presupuestoAsignado });
         setActividadReciente(dataEquipos.slice(0, 5));
         setPrestamosActivos(dataUso || []);
         
-        // Unimos las alertas dinámicas con los registros guardados
         setNotificaciones([...alertasDinamicas, ...(dataNotificaciones || [])]);
 
         setDatosGraficaEstatus([
@@ -115,6 +114,22 @@ function Dashboard() {
     }
   };
 
+  const marcarTodasComoLeidas = async () => {
+    try {
+      const { error } = await supabase
+        .from('post1')
+        .update({ leida: true })
+        .eq('leida', false);
+        
+      if (error) throw error;
+      
+      obtenerDatosDashboard();
+      setMostrarMenuNotificaciones(false);
+    } catch (error) {
+      alert('Error al actualizar notificaciones: ' + error.message);
+    }
+  };
+
   const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
   const formatearFecha = (fechaIso) => new Date(fechaIso).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute:'2-digit' });
 
@@ -128,34 +143,78 @@ function Dashboard() {
           <h1>Panel de Control</h1>
           <p>Resumen general de la Red de Laboratorios</p>
         </div>
-        <button className="btn-secondary" onClick={ajustarPresupuesto} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          ✏️ Ajustar Presupuesto
-        </button>
-      </header>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <button className="btn-secondary" onClick={ajustarPresupuesto}>
+            Ajustar Presupuesto
+          </button>
 
-      {/* NUEVA SECCIÓN: Centro de Notificaciones */}
-      {notificaciones.length > 0 && (
-        <section style={{ backgroundColor: '#fff3f3', borderLeft: '4px solid #e74c3c', padding: '15px', borderRadius: '4px', marginBottom: '20px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-          <h3 style={{ color: '#c0392b', marginTop: 0, marginBottom: '10px', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          Alertas de Mantenimiento ({notificaciones.length})
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {notificaciones.map((notif, index) => (
-              <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid #fadbd8' }}>
-                <div>
-                  <strong style={{ color: '#e74c3c' }}>{notif.clave_activo}</strong> - {notif.mensaje}
-                  <div style={{ fontSize: '11px', color: '#7f8c8d', marginTop: '4px' }}>
-                    Reportado por: {notif.author1?.nombre || 'Sistema'} | {formatearFecha(notif.fecha)}
-                  </div>
-                </div>
-                <span className={`badge ${notif.tipo === 'URGENTE' ? 'warning' : 'info'}`} style={{ backgroundColor: notif.tipo === 'URGENTE' ? '#e74c3c' : '#f39c12', color: '#fff' }}>
-                  {notif.tipo}
+          {/* Menú de Notificaciones Interactivo */}
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setMostrarMenuNotificaciones(!mostrarMenuNotificaciones)} 
+              style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', padding: '5px' }}
+              title="Notificaciones"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2c3e50" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              {notificaciones.length > 0 && (
+                <span style={{ 
+                  position: 'absolute', top: '0px', right: '0px', backgroundColor: '#e74c3c', color: 'white', 
+                  borderRadius: '50%', minWidth: '16px', height: '16px', fontSize: '10px', 
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' 
+                }}>
+                  {notificaciones.length}
                 </span>
+              )}
+            </button>
+
+            {mostrarMenuNotificaciones && (
+              <div style={{ 
+                position: 'absolute', right: 0, top: '40px', width: '350px', backgroundColor: '#ffffff', 
+                border: '1px solid #e0e0e0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', 
+                zIndex: 1000, overflow: 'hidden' 
+              }}>
+                <div style={{ padding: '12px 15px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: '14px', color: '#2c3e50' }}>Notificaciones</strong>
+                  {notificaciones.length > 0 && (
+                    <button onClick={marcarTodasComoLeidas} style={{ background: 'none', border: 'none', color: '#3498db', fontSize: '12px', cursor: 'pointer', padding: 0 }}>
+                      Marcar todas como leídas
+                    </button>
+                  )}
+                </div>
+                
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {notificaciones.length === 0 ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#7f8c8d', fontSize: '13px' }}>
+                      No hay notificaciones pendientes.
+                    </div>
+                  ) : (
+                    notificaciones.map((notif, index) => (
+                      <div key={index} style={{ padding: '12px 15px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <strong style={{ fontSize: '13px', color: notif.tipo === 'Critico' ? '#e74c3c' : '#2c3e50' }}>
+                            {notif.clave_activo}
+                          </strong>
+                          <span style={{ fontSize: '10px', backgroundColor: notif.tipo === 'Critico' ? '#fadbd8' : '#fcf3cf', color: notif.tipo === 'Critico' ? '#c0392b' : '#d35400', padding: '2px 6px', borderRadius: '4px' }}>
+                            {notif.tipo}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '13px', color: '#34495e' }}>{notif.mensaje}</span>
+                        <span style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
+                          {notif.author1?.nombre || 'Sistema'} • {formatearFecha(notif.fecha)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-            ))}
+            )}
           </div>
-        </section>
-      )}
+        </div>
+      </header>
 
       <section className="kpi-grid">
         <div className="kpi-card">
