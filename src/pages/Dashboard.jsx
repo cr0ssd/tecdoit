@@ -7,7 +7,12 @@ function Dashboard() {
   const navigate = useNavigate();
   
   const [metricas, setMetricas] = useState({ 
-    total: 0, mantenimiento: 0, activos: 0, prestados: 0, capexTotal: 0, capexEquipos: 0, capexMantenimientos: 0, presupuestoAsignado: 0 
+    totalEquipos: 0, 
+    mantenimientoActivo: 0, 
+    prestados: 0, 
+    opexMantenimientos: 0, 
+    opexReposiciones: 0, 
+    opexTotal: 0 
   });
   
   const [actividadReciente, setActividadReciente] = useState([]);
@@ -26,13 +31,11 @@ function Dashboard() {
   useEffect(() => {
     obtenerDatosDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leidasLocales]); 
+  }, [leidasLocales]);
 
   async function obtenerDatosDashboard() {
     try {
       setCargando(true);
-      
-      const { data: dataPresupuesto } = await supabase.from('presupuesto_global').select('monto').eq('id', 1).single();
       
       const { data: dataEquipos, error: errEq } = await supabase
         .from('equipos')
@@ -54,29 +57,28 @@ function Dashboard() {
         .limit(20);
 
       if (dataEquipos) {
-        const total = dataEquipos.length;
-        const mantenimiento = dataEquipos.filter(e => e.estatus === 'En Mantenimiento').length;
-        const activos = dataEquipos.filter(e => e.estatus === 'Activo').length;
+        const totalEquipos = dataEquipos.length;
+        const mantenimientoActivo = dataEquipos.filter(e => e.estatus === 'En Mantenimiento').length;
         const prestados = dataUso ? dataUso.length : 0;
 
-        const capexEquipos = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
-        const capexMantenimientos = dataMant ? dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0) : 0;
-        const capexTotal = capexEquipos + capexMantenimientos;
-        const presupuestoAsignado = dataPresupuesto ? Number(dataPresupuesto.monto) : 0;
+        // Cálculo de OpEx: Sumatoria de costos de todos los equipos (Reposiciones) y Mantenimientos
+        const opexReposiciones = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
+        const opexMantenimientos = dataMant ? dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0) : 0;
+        const opexTotal = opexReposiciones + opexMantenimientos;
 
         const alertasDinamicas = dataEquipos
           .filter(e => e.mantenimiento_urgente || (e.horas_acumuladas || 0) >= (e.limite_horas || 8))
           .map(e => ({
             id: `din-${e.clave_activo}`,
             clave_activo: e.clave_activo,
-            mensaje: e.mantenimiento_urgente ? 'Requiere mantenimiento urgente.' : `Superó el límite de ${e.limite_horas} horas de servicio.`,
+            mensaje: e.mantenimiento_urgente ? 'Requiere mantenimiento urgente.' : `Límite operativo de ${e.limite_horas} horas alcanzado.`,
             tipo: e.mantenimiento_urgente ? 'Critico' : 'Advertencia',
             fecha: new Date().toISOString(),
             author1: { nombre: 'Sistema' },
             leida: leidasLocales.includes(`din-${e.clave_activo}`)
           }));
 
-        setMetricas({ total, mantenimiento, activos, prestados, capexTotal, capexEquipos, capexMantenimientos, presupuestoAsignado });
+        setMetricas({ totalEquipos, mantenimientoActivo, prestados, opexMantenimientos, opexReposiciones, opexTotal });
         setActividadReciente(dataEquipos.slice(0, 5));
         setPrestamosActivos(dataUso || []);
         
@@ -85,8 +87,8 @@ function Dashboard() {
         setNotificaciones(todasNotificaciones);
 
         setDatosGraficaEstatus([
-          { name: 'Disponibles', value: activos - prestados },
-          { name: 'En Mantenimiento', value: mantenimiento },
+          { name: 'Disponibles', value: (totalEquipos - mantenimientoActivo) - prestados },
+          { name: 'En Mantenimiento', value: mantenimientoActivo },
           { name: 'En Uso (Prestados)', value: prestados }
         ]);
 
@@ -99,93 +101,59 @@ function Dashboard() {
         setDatosGraficaLabs(datosBarras);
       }
     } catch (error) {
-      console.error('Error al cargar el panel de control:', error.message);
+      console.error('Error en la carga de métricas operativas:', error.message);
     } finally {
       setCargando(false);
     }
   }
 
-  const ajustarPresupuesto = async () => {
-    const nuevoMonto = window.prompt(
-      'Ajuste de Presupuesto Global\nIngrese el nuevo límite financiero para la red de laboratorios (únicamente formato numérico):', 
-      metricas.presupuestoAsignado
-    );
-    if (nuevoMonto === null || nuevoMonto.trim() === '') return;
-    const montoNumerico = parseFloat(nuevoMonto);
-    if (isNaN(montoNumerico) || montoNumerico < 0) return alert('Por favor, ingrese una cantidad numérica válida.');
-
-    try {
-      await supabase.from('presupuesto_global').update({ monto: montoNumerico }).eq('id', 1);
-      obtenerDatosDashboard(); 
-    } catch (error) {
-      alert('Error de base de datos al actualizar el presupuesto: ' + error.message);
-    }
-  };
-
   const procesarClicNotificacion = async (notif) => {
-    // 1. Marcar como leída en la interfaz optimista y base de datos
     if (!notif.leida) {
       setNotificaciones(prev => prev.map(n => n.id === notif.id ? { ...n, leida: true } : n));
-      
       if (String(notif.id).startsWith('din-')) {
         setLeidasLocales(prev => [...prev, notif.id]);
       } else {
         try {
           await supabase.from('post1').update({ leida: true }).eq('id', notif.id);
         } catch (error) {
-          console.error('Fallo al actualizar el registro de notificación:', error.message);
+          console.error('Error al actualizar estado de lectura:', error.message);
         }
       }
     }
-
-    // 2. Cerrar menú de notificaciones
     setMostrarMenuNotificaciones(false);
-    
-    // 3. Ejecutar redirección. Asegúrate de que '/mantenimiento' sea la ruta exacta en tu App.jsx
     navigate('/mantenimiento', { state: { autoCompletarClave: notif.clave_activo } });
   };
 
   const marcarTodasComoLeidas = async () => {
     try {
       const idsDinamicas = notificaciones.filter(n => !n.leida && String(n.id).startsWith('din-')).map(n => n.id);
-      if (idsDinamicas.length > 0) {
-        setLeidasLocales(prev => [...prev, ...idsDinamicas]);
-      }
-
+      if (idsDinamicas.length > 0) setLeidasLocales(prev => [...prev, ...idsDinamicas]);
       const { error } = await supabase.from('post1').update({ leida: true }).eq('leida', false);
       if (error) throw error;
-      
       obtenerDatosDashboard();
     } catch (error) {
-      alert('Se presentó un problema al actualizar las notificaciones: ' + error.message);
+      alert('Error en actualización masiva:', error.message);
     }
   };
 
   const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
   const formatearFecha = (fechaIso) => new Date(fechaIso).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute:'2-digit' });
 
-  const dineroDisponible = metricas.presupuestoAsignado - metricas.capexTotal;
-  const porcentajeGastado = metricas.presupuestoAsignado > 0 ? ((metricas.capexTotal / metricas.presupuestoAsignado) * 100).toFixed(1) : 0;
   const notificacionesPendientes = notificaciones.filter(n => !n.leida).length;
 
   return (
     <div className="dashboard-container">
       <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1>Panel de Control Analítico</h1>
-          <p>Resumen ejecutivo de la Red de Laboratorios</p>
+          <h1>Inicio</h1>
+          <p>Análisis de gastos de operación y estatus de la red</p>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <button className="btn-secondary" onClick={ajustarPresupuesto}>
-            Gestión de Presupuesto
-          </button>
-
           <div style={{ position: 'relative' }}>
             <button 
               onClick={() => setMostrarMenuNotificaciones(!mostrarMenuNotificaciones)} 
               style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', padding: '5px' }}
-              title="Centro de Alertas"
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2c3e50" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
@@ -212,16 +180,13 @@ function Dashboard() {
                   <strong style={{ fontSize: '14px', color: '#2c3e50' }}>Centro de Notificaciones</strong>
                   {notificacionesPendientes > 0 && (
                     <button onClick={marcarTodasComoLeidas} style={{ background: 'none', border: 'none', color: '#3498db', fontSize: '12px', cursor: 'pointer', padding: 0 }}>
-                      Marcar todo como leído
+                      Marcar todo leído
                     </button>
                   )}
                 </div>
-                
                 <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
                   {notificaciones.length === 0 ? (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#7f8c8d', fontSize: '13px' }}>
-                      Bandeja de alertas vacía.
-                    </div>
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#7f8c8d', fontSize: '13px' }}>Bandeja vacía</div>
                   ) : (
                     notificaciones.map((notif, index) => (
                       <div 
@@ -230,21 +195,14 @@ function Dashboard() {
                         style={{ 
                           padding: '12px 15px', 
                           borderBottom: '1px solid #f0f0f0', 
-                          display: 'flex', 
-                          flexDirection: 'column', 
-                          gap: '4px',
-                          cursor: 'pointer',
+                          cursor: 'pointer', 
                           backgroundColor: notif.leida ? '#ffffff' : '#f4f6f7',
                           transition: 'background-color 0.2s ease'
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <strong style={{ fontSize: '13px', color: notif.tipo === 'Critico' ? '#e74c3c' : '#2c3e50', fontWeight: notif.leida ? 'normal' : 'bold' }}>
-                            {notif.clave_activo}
-                          </strong>
-                          <span style={{ fontSize: '10px', backgroundColor: notif.tipo === 'Critico' ? '#fadbd8' : '#fcf3cf', color: notif.tipo === 'Critico' ? '#c0392b' : '#d35400', padding: '2px 6px', borderRadius: '4px' }}>
-                            {notif.tipo}
-                          </span>
+                          <strong style={{ fontSize: '13px', color: notif.tipo === 'Critico' ? '#e74c3c' : '#2c3e50', fontWeight: notif.leida ? 'normal' : 'bold' }}>{notif.clave_activo}</strong>
+                          <span style={{ fontSize: '10px', backgroundColor: notif.tipo === 'Critico' ? '#fadbd8' : '#fcf3cf', color: notif.tipo === 'Critico' ? '#c0392b' : '#d35400', padding: '2px 6px', borderRadius: '4px' }}>{notif.tipo}</span>
                         </div>
                         <span style={{ fontSize: '13px', color: '#34495e' }}>{notif.mensaje}</span>
                         <span style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
@@ -263,7 +221,7 @@ function Dashboard() {
       <section className="kpi-grid">
         <div className="kpi-card">
           <h3>Volumen de Activos</h3>
-          <p className="kpi-number">{cargando ? '...' : metricas.total}</p>
+          <p className="kpi-number">{cargando ? '...' : metricas.totalEquipos}</p>
           <span className="kpi-status ok">Operación General</span>
         </div>
         
@@ -275,30 +233,23 @@ function Dashboard() {
 
         <div className="kpi-card">
           <h3>Soporte Técnico</h3>
-          <p className="kpi-number warning-text">{cargando ? '...' : metricas.mantenimiento}</p>
+          <p className="kpi-number warning-text">{cargando ? '...' : metricas.mantenimientoActivo}</p>
           <span className="kpi-status warning">Equipos en revisión</span>
         </div>
 
-        <div className="kpi-card" style={{ borderTop: '4px solid #8e44ad', minWidth: '280px' }}>
-          <h3>Estado Financiero</h3>
-          <p className="kpi-number" style={{ color: dineroDisponible < 0 ? '#e74c3c' : '#8e44ad', fontSize: '28px' }}>
-            {cargando ? '...' : formatoMoneda(dineroDisponible)}
+        <div className="kpi-card" style={{ borderTop: '4px solid #27ae60', minWidth: '280px' }}>
+          <h3>OpEx Acumulado</h3>
+          <p className="kpi-number" style={{ color: '#27ae60', fontSize: '28px' }}>
+            {cargando ? '...' : formatoMoneda(metricas.opexTotal)}
           </p>
-          <div style={{ marginTop: '10px', fontSize: '12px', color: '#7f8c8d', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>
-              <span>Fondo Operativo Total:</span>
-              <strong>{formatoMoneda(metricas.presupuestoAsignado)}</strong>
-            </div>
+          <div style={{ marginTop: '10px', fontSize: '12px', color: '#7f8c8d' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Inversión de Activos:</span>
-              <strong style={{ color: '#e74c3c' }}>-{formatoMoneda(metricas.capexEquipos)}</strong>
+              <span>Reposiciones/Equipos:</span>
+              <strong>{formatoMoneda(metricas.opexReposiciones)}</strong>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Gastos de Soporte:</span>
-              <strong style={{ color: '#e74c3c' }}>-{formatoMoneda(metricas.capexMantenimientos)}</strong>
-            </div>
-            <div style={{ width: '100%', height: '6px', backgroundColor: '#ecf0f1', borderRadius: '3px', marginTop: '2px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', backgroundColor: porcentajeGastado > 90 ? '#e74c3c' : '#8e44ad', width: `${Math.min(porcentajeGastado, 100)}%` }}></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
+              <span>Servicios/Mantenimientos:</span>
+              <strong>{formatoMoneda(metricas.opexMantenimientos)}</strong>
             </div>
           </div>
         </div>
@@ -340,6 +291,7 @@ function Dashboard() {
         </div>
       </section>
 
+      {/* Aquí están de vuelta tus tablas inferiores */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '30px' }}>
         <section className="recent-activity">
           <h2>Registro de Asignaciones Temporales</h2>
