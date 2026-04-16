@@ -13,7 +13,13 @@ function Inventario() {
   const [modoEdicion, setModoEdicion] = useState(false);
 
   const [nuevoEquipo, setNuevoEquipo] = useState({
-    clave_activo: '', marca: '', modelo: '', id_laboratorio: '', imagen_url: '', costo: ''
+    clave_activo: '', 
+    marca: '', 
+    modelo: '', 
+    id_laboratorio: '', 
+    imagen_url: '', 
+    costo: '',
+    limite_horas: ''
   });
   
   const [imagenArchivo, setImagenArchivo] = useState(null);
@@ -28,7 +34,7 @@ function Inventario() {
     try {
       const { data: dataEquipos, error: errorEquipos } = await supabase
         .from('equipos')
-        .select('clave_activo, marca, modelo, estatus, id_laboratorio, imagen_url, costo, laboratorios (nombre)');
+        .select('clave_activo, marca, modelo, estatus, id_laboratorio, imagen_url, costo, limite_horas, laboratorios (nombre)');
       if (errorEquipos) throw errorEquipos;
       if (dataEquipos) setEquipos(dataEquipos);
 
@@ -70,7 +76,15 @@ function Inventario() {
 
   const abrirModalNuevo = () => {
     setModoEdicion(false);
-    setNuevoEquipo({ clave_activo: '', marca: '', modelo: '', id_laboratorio: '', imagen_url: '', costo: '' });
+    setNuevoEquipo({ 
+      clave_activo: '', 
+      marca: '', 
+      modelo: '', 
+      id_laboratorio: '', 
+      imagen_url: '', 
+      costo: '', 
+      limite_horas: '' 
+    });
     setImagenArchivo(null);
     setMostrarModal(true);
   };
@@ -83,23 +97,24 @@ function Inventario() {
       modelo: equipo.modelo || '',
       id_laboratorio: equipo.id_laboratorio || '',
       imagen_url: equipo.imagen_url || '',
-      costo: equipo.costo || ''
+      costo: equipo.costo || '',
+      limite_horas: equipo.limite_horas || ''
     });
     setImagenArchivo(null); 
     setMostrarModal(true);
   };
 
   const eliminarEquipo = async (clave_activo) => {
-    const confirmacion = window.confirm(`¿Estás seguro de que deseas eliminar el equipo ${clave_activo}? Esta acción es permanente.`);
+    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el equipo ${clave_activo}? Esta acción es permanente y no se puede deshacer.`);
     if (!confirmacion) return;
 
     try {
       const { error } = await supabase.from('equipos').delete().eq('clave_activo', clave_activo);
       if (error) throw error;
-      alert('Equipo eliminado correctamente.');
+      alert('Registro eliminado correctamente del sistema.');
       obtenerDatos(); 
     } catch (error) {
-      alert('Error al eliminar: ' + error.message);
+      alert('Error de base de datos al eliminar: ' + error.message);
     }
   };
 
@@ -126,24 +141,25 @@ function Inventario() {
         modelo: nuevoEquipo.modelo,
         id_laboratorio: nuevoEquipo.id_laboratorio ? parseInt(nuevoEquipo.id_laboratorio) : null,
         imagen_url: url_imagen_final,
-        costo: nuevoEquipo.costo ? parseFloat(nuevoEquipo.costo) : 0
+        costo: nuevoEquipo.costo ? parseFloat(nuevoEquipo.costo) : 0,
+        limite_horas: nuevoEquipo.limite_horas ? parseFloat(nuevoEquipo.limite_horas) : null
       };
 
       if (modoEdicion) {
         const { error } = await supabase.from('equipos').update(datosGuardar).eq('clave_activo', nuevoEquipo.clave_activo); 
         if (error) throw error;
-        alert('¡Equipo actualizado con éxito!');
+        alert('Registro actualizado correctamente.');
       } else {
         datosGuardar.clave_activo = nuevoEquipo.clave_activo; 
         const { error } = await supabase.from('equipos').insert([datosGuardar]);
         if (error) throw error;
-        alert('¡Equipo registrado con éxito!');
+        alert('Registro completado exitosamente.');
       }
 
       setMostrarModal(false);
       obtenerDatos(); 
     } catch (error) {
-      alert('Hubo un error al guardar: ' + error.message);
+      alert('Se presentó un error durante el guardado: ' + error.message);
     } finally {
       setSubiendo(false);
     }
@@ -154,9 +170,9 @@ function Inventario() {
       <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1>Gestión de Inventarios</h1>
-          <p>Catálogo centralizado de equipos por laboratorio</p>
+          <p>Catálogo centralizado de activos corporativos</p>
         </div>
-        <button className="btn-primary" onClick={abrirModalNuevo}>+ Agregar Equipo</button>
+        <button className="btn-primary" onClick={abrirModalNuevo}>Agregar Activo</button>
       </header>
 
       <section className="filters-section" style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
@@ -168,7 +184,7 @@ function Inventario() {
           onChange={(e) => setBusqueda(e.target.value)}
         />
         <select className="select-filter" value={filtroLab} onChange={(e) => setFiltroLab(e.target.value)}>
-          <option value="">Todos los Laboratorios</option>
+          <option value="">Todos los Sectores</option>
           {laboratorios.map(lab => (
              <option key={lab.id_laboratorio} value={lab.id_laboratorio}>{lab.nombre}</option>
           ))}
@@ -179,20 +195,20 @@ function Inventario() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Foto</th>
-              <th>Clave Activo</th>
-              <th>Equipo / Marca</th>
-              <th>Laboratorio</th>
-              <th>Costo</th>
-              <th>Estatus</th>
+              <th>Fotografía</th>
+              <th>Clave de Activo</th>
+              <th>Marca y Modelo</th>
+              <th>Asignación</th>
+              <th>Parámetros Financieros / Uso</th>
+              <th>Estatus Operativo</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Cargando datos desde la nube...</td></tr>
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Consultando base de datos...</td></tr>
             ) : equiposFiltrados.length === 0 ? (
-              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se encontraron equipos que coincidan.</td></tr>
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
               equiposFiltrados.map((equipo) => (
                 <tr key={equipo.clave_activo}>
@@ -200,16 +216,21 @@ function Inventario() {
                     {equipo.imagen_url ? (
                       <img src={equipo.imagen_url} alt={equipo.modelo} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ecf0f1' }} />
                     ) : (
-                      <div style={{ width: '50px', height: '50px', backgroundColor: '#ecf0f1', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#95a5a6' }}>Sin foto</div>
+                      <div style={{ width: '50px', height: '50px', backgroundColor: '#ecf0f1', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#95a5a6', textAlign: 'center' }}>Sin archivo</div>
                     )}
                   </td>
                   <td><strong>{equipo.clave_activo}</strong></td>
                   <td>{equipo.marca} <br/><small>{equipo.modelo}</small></td>
-                  <td>{equipo.laboratorios?.nombre || 'Sin asignar'}</td>
-                  <td>${equipo.costo || '0.00'}</td>
+                  <td>{equipo.laboratorios?.nombre || 'Pendiente de asignación'}</td>
+                  <td>
+                    Valor: ${equipo.costo || '0.00'}<br/>
+                    <small style={{ color: '#7f8c8d' }}>
+                      {equipo.limite_horas ? `Umbral de servicio: ${equipo.limite_horas} hrs` : 'Umbral no definido'}
+                    </small>
+                  </td>
                   <td><span className={`badge ${equipo.estatus === 'Activo' ? 'ok' : 'warning'}`}>{equipo.estatus}</span></td>
                   <td>
-                    <button className="btn-icon" onClick={() => abrirModalEditar(equipo)}>Editar</button>
+                    <button className="btn-icon" onClick={() => abrirModalEditar(equipo)}>Modificar</button>
                     <button className="btn-icon" style={{ borderColor: '#e74c3c', color: '#e74c3c', marginLeft: '8px' }} onClick={() => eliminarEquipo(equipo.clave_activo)}>Eliminar</button>
                   </td>
                 </tr>
@@ -221,46 +242,55 @@ function Inventario() {
 
       {mostrarModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '500px' }}>
-            <h2>{modoEdicion ? 'Editar Equipo' : 'Registrar Nuevo Equipo'}</h2>
+          <div className="modal-content" style={{ maxWidth: '600px' }}>
+            <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
+              {modoEdicion ? 'Modificación de Registro de Activo' : 'Alta de Nuevo Activo'}
+            </h2>
             <form onSubmit={guardarEquipo}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <div className="form-group">
-                  <label>Clave Activo</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+                <div className="form-group" style={{ marginBottom: '0' }}>
+                  <label>Clave de Activo</label>
                   <input type="text" name="clave_activo" required value={nuevoEquipo.clave_activo} onChange={handleInputChange} disabled={modoEdicion} style={modoEdicion ? { backgroundColor: '#f4f7f6', cursor: 'not-allowed' } : {}}/>
                 </div>
-                <div className="form-group">
-                  <label>Laboratorio</label>
+                <div className="form-group" style={{ marginBottom: '0' }}>
+                  <label>Asignación de Área</label>
                   <select name="id_laboratorio" value={nuevoEquipo.id_laboratorio} onChange={handleInputChange} required>
-                    <option value="">-- Seleccionar --</option>
+                    <option value="">-- Seleccione una opción --</option>
                     {laboratorios.map(lab => <option key={lab.id_laboratorio} value={lab.id_laboratorio}>{lab.nombre}</option>)}
                   </select>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <div className="form-group">
-                  <label>Marca</label>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+                <div className="form-group" style={{ marginBottom: '0' }}>
+                  <label>Marca Fabricante</label>
                   <input type="text" name="marca" value={nuevoEquipo.marca} onChange={handleInputChange} />
                 </div>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Modelo</label>
                   <input type="text" name="modelo" value={nuevoEquipo.modelo} onChange={handleInputChange} />
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <div className="form-group">
-                  <label>Costo de Adquisición ($)</label>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+                <div className="form-group" style={{ marginBottom: '0' }}>
+                  <label>Inversión Inicial ($)</label>
                   <input type="number" step="0.01" name="costo" value={nuevoEquipo.costo} onChange={handleInputChange} placeholder="0.00" />
                 </div>
-                <div className="form-group">
-                  <label>{modoEdicion ? 'Actualizar Foto' : 'Fotografía'}</label>
-                  <input type="file" accept="image/*" onChange={handleFileChange} />
+                <div className="form-group" style={{ marginBottom: '0' }}>
+                  <label>Límite de Operación (Horas)</label>
+                  <input type="number" step="0.1" name="limite_horas" value={nuevoEquipo.limite_horas} onChange={handleInputChange} placeholder="Parámetro opcional" title="Establecer límite de horas de servicio antes de requerir inspección técnica" />
                 </div>
               </div>
+              
+              <div className="form-group" style={{ marginBottom: '25px' }}>
+                <label>{modoEdicion ? 'Actualización de Documento Gráfico' : 'Documento Gráfico (Fotografía)'}</label>
+                <input type="file" accept="image/*" onChange={handleFileChange} />
+              </div>
 
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={subiendo}>Cancelar</button>
-                <button type="submit" className="btn-primary" disabled={subiendo}>{subiendo ? 'Guardando...' : modoEdicion ? 'Actualizar Equipo' : 'Guardar Equipo'}</button>
+              <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={subiendo}>Cancelar Operación</button>
+                <button type="submit" className="btn-primary" disabled={subiendo}>{subiendo ? 'Procesando Transacción...' : modoEdicion ? 'Aplicar Modificaciones' : 'Confirmar Registro'}</button>
               </div>
             </form>
           </div>
