@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
+import { inventarioAPI } from '../services/api';
 
 function Inventario() {
   const [equipos, setEquipos] = useState([]);
   const [laboratorios, setLaboratorios] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
 
   const [busqueda, setBusqueda] = useState('');
   const [filtroLab, setFiltroLab] = useState('');
@@ -13,15 +15,15 @@ function Inventario() {
   const [modoEdicion, setModoEdicion] = useState(false);
 
   const [nuevoEquipo, setNuevoEquipo] = useState({
-    clave_activo: '', 
-    marca: '', 
-    modelo: '', 
-    id_laboratorio: '', 
-    imagen_url: '', 
+    clave_activo: '',
+    marca: '',
+    modelo: '',
+    id_laboratorio: '',
+    imagen_url: '',
     costo: '',
     limite_horas: ''
   });
-  
+
   const [imagenArchivo, setImagenArchivo] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
 
@@ -31,21 +33,17 @@ function Inventario() {
 
   async function obtenerDatos() {
     setCargando(true);
+    setError(null);
     try {
-      const { data: dataEquipos, error: errorEquipos } = await supabase
-        .from('equipos')
-        .select('clave_activo, marca, modelo, estatus, id_laboratorio, imagen_url, costo, limite_horas, laboratorios (nombre)');
-      if (errorEquipos) throw errorEquipos;
-      if (dataEquipos) setEquipos(dataEquipos);
-
-      const { data: dataLabs, error: errorLabs } = await supabase
-        .from('laboratorios')
-        .select('id_laboratorio, nombre');
-      if (errorLabs) throw errorLabs;
-      if (dataLabs) setLaboratorios(dataLabs);
-
-    } catch (error) {
-      console.error('Error al cargar datos:', error.message);
+      const [dataEquipos, dataLabs] = await Promise.all([
+        inventarioAPI.obtenerEquipos(),
+        inventarioAPI.obtenerLaboratorios()
+      ]);
+      setEquipos(dataEquipos);
+      setLaboratorios(dataLabs);
+    } catch (err) {
+      console.error('Error al cargar datos:', err.message);
+      setError('No se pudo cargar el inventario. Verifica que el backend esté corriendo.');
     } finally {
       setCargando(false);
     }
@@ -53,13 +51,11 @@ function Inventario() {
 
   const equiposFiltrados = equipos.filter((equipo) => {
     const textoBusqueda = busqueda.toLowerCase();
-    const coincideTexto = 
+    const coincideTexto =
       (equipo.clave_activo && equipo.clave_activo.toLowerCase().includes(textoBusqueda)) ||
       (equipo.marca && equipo.marca.toLowerCase().includes(textoBusqueda)) ||
       (equipo.modelo && equipo.modelo.toLowerCase().includes(textoBusqueda));
-
     const coincideLab = filtroLab === '' || equipo.id_laboratorio?.toString() === filtroLab;
-
     return coincideTexto && coincideLab;
   });
 
@@ -76,16 +72,9 @@ function Inventario() {
 
   const abrirModalNuevo = () => {
     setModoEdicion(false);
-    setNuevoEquipo({ 
-      clave_activo: '', 
-      marca: '', 
-      modelo: '', 
-      id_laboratorio: '', 
-      imagen_url: '', 
-      costo: '', 
-      limite_horas: '' 
-    });
+    setNuevoEquipo({ clave_activo: '', marca: '', modelo: '', id_laboratorio: '', imagen_url: '', costo: '', limite_horas: '' });
     setImagenArchivo(null);
+    setError(null);
     setMostrarModal(true);
   };
 
@@ -100,66 +89,66 @@ function Inventario() {
       costo: equipo.costo || '',
       limite_horas: equipo.limite_horas || ''
     });
-    setImagenArchivo(null); 
+    setImagenArchivo(null);
+    setError(null);
     setMostrarModal(true);
   };
 
   const eliminarEquipo = async (clave_activo) => {
-    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el equipo ${clave_activo}? Esta acción es permanente y no se puede deshacer.`);
+    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el equipo ${clave_activo}? Esta acción es permanente.`);
     if (!confirmacion) return;
-
+    setError(null);
     try {
-      const { error } = await supabase.from('equipos').delete().eq('clave_activo', clave_activo);
-      if (error) throw error;
-      alert('Registro eliminado correctamente del sistema.');
-      obtenerDatos(); 
-    } catch (error) {
-      alert('Error de base de datos al eliminar: ' + error.message);
+      await inventarioAPI.eliminarEquipo(clave_activo);
+      obtenerDatos();
+    } catch (err) {
+      setError('Error al eliminar: ' + err.message);
     }
   };
 
   const guardarEquipo = async (e) => {
     e.preventDefault();
     setSubiendo(true);
-    
+    setError(null);
+
     try {
+      // Image upload stays in frontend per Rule 6 — Supabase Storage with Anon Key
       let url_imagen_final = nuevoEquipo.imagen_url;
 
       if (imagenArchivo) {
         const extension = imagenArchivo.name.split('.').pop();
         const nombreArchivo = `${nuevoEquipo.clave_activo}-${Date.now()}.${extension}`;
 
-        const { error: errorUpload } = await supabase.storage.from('imagenes_equipos').upload(nombreArchivo, imagenArchivo);
+        const { error: errorUpload } = await supabase.storage
+          .from('imagenes_equipos')
+          .upload(nombreArchivo, imagenArchivo);
         if (errorUpload) throw errorUpload;
 
-        const { data: urlData } = supabase.storage.from('imagenes_equipos').getPublicUrl(nombreArchivo);
+        const { data: urlData } = supabase.storage
+          .from('imagenes_equipos')
+          .getPublicUrl(nombreArchivo);
         url_imagen_final = urlData.publicUrl;
       }
 
-      const datosGuardar = {
+      const datos = {
         marca: nuevoEquipo.marca,
         modelo: nuevoEquipo.modelo,
-        id_laboratorio: nuevoEquipo.id_laboratorio ? parseInt(nuevoEquipo.id_laboratorio) : null,
+        id_laboratorio: nuevoEquipo.id_laboratorio,
         imagen_url: url_imagen_final,
-        costo: nuevoEquipo.costo ? parseFloat(nuevoEquipo.costo) : 0,
-        limite_horas: nuevoEquipo.limite_horas ? parseFloat(nuevoEquipo.limite_horas) : null
+        costo: nuevoEquipo.costo,
+        limite_horas: nuevoEquipo.limite_horas
       };
 
       if (modoEdicion) {
-        const { error } = await supabase.from('equipos').update(datosGuardar).eq('clave_activo', nuevoEquipo.clave_activo); 
-        if (error) throw error;
-        alert('Registro actualizado correctamente.');
+        await inventarioAPI.actualizarEquipo(nuevoEquipo.clave_activo, datos);
       } else {
-        datosGuardar.clave_activo = nuevoEquipo.clave_activo; 
-        const { error } = await supabase.from('equipos').insert([datosGuardar]);
-        if (error) throw error;
-        alert('Registro completado exitosamente.');
+        await inventarioAPI.crearEquipo({ ...datos, clave_activo: nuevoEquipo.clave_activo });
       }
 
       setMostrarModal(false);
-      obtenerDatos(); 
-    } catch (error) {
-      alert('Se presentó un error durante el guardado: ' + error.message);
+      obtenerDatos();
+    } catch (err) {
+      setError('Error al guardar: ' + err.message);
     } finally {
       setSubiendo(false);
     }
@@ -175,18 +164,24 @@ function Inventario() {
         <button className="btn-primary" onClick={abrirModalNuevo}>Agregar Activo</button>
       </header>
 
+      {error && !mostrarModal && (
+        <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>
+          {error}
+        </div>
+      )}
+
       <section className="filters-section" style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-        <input 
-          type="text" 
-          placeholder="Buscar por clave, marca o modelo..." 
-          className="input-search" 
+        <input
+          type="text"
+          placeholder="Buscar por clave, marca o modelo..."
+          className="input-search"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />
         <select className="select-filter" value={filtroLab} onChange={(e) => setFiltroLab(e.target.value)}>
           <option value="">Todos los Sectores</option>
           {laboratorios.map(lab => (
-             <option key={lab.id_laboratorio} value={lab.id_laboratorio}>{lab.nombre}</option>
+            <option key={lab.id_laboratorio} value={lab.id_laboratorio}>{lab.nombre}</option>
           ))}
         </select>
       </section>
@@ -220,10 +215,10 @@ function Inventario() {
                     )}
                   </td>
                   <td><strong>{equipo.clave_activo}</strong></td>
-                  <td>{equipo.marca} <br/><small>{equipo.modelo}</small></td>
+                  <td>{equipo.marca}<br /><small>{equipo.modelo}</small></td>
                   <td>{equipo.laboratorios?.nombre || 'Pendiente de asignación'}</td>
                   <td>
-                    Valor: ${equipo.costo || '0.00'}<br/>
+                    Valor: ${equipo.costo || '0.00'}<br />
                     <small style={{ color: '#7f8c8d' }}>
                       {equipo.limite_horas ? `Umbral de servicio: ${equipo.limite_horas} hrs` : 'Umbral no definido'}
                     </small>
@@ -246,21 +241,38 @@ function Inventario() {
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
               {modoEdicion ? 'Modificación de Registro de Activo' : 'Alta de Nuevo Activo'}
             </h2>
+
+            {error && (
+              <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>
+                {error}
+              </div>
+            )}
+
             <form onSubmit={guardarEquipo}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
                 <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Clave de Activo</label>
-                  <input type="text" name="clave_activo" required value={nuevoEquipo.clave_activo} onChange={handleInputChange} disabled={modoEdicion} style={modoEdicion ? { backgroundColor: '#f4f7f6', cursor: 'not-allowed' } : {}}/>
+                  <input
+                    type="text"
+                    name="clave_activo"
+                    required
+                    value={nuevoEquipo.clave_activo}
+                    onChange={handleInputChange}
+                    disabled={modoEdicion}
+                    style={modoEdicion ? { backgroundColor: '#f4f7f6', cursor: 'not-allowed' } : {}}
+                  />
                 </div>
                 <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Asignación de Área</label>
                   <select name="id_laboratorio" value={nuevoEquipo.id_laboratorio} onChange={handleInputChange} required>
                     <option value="">-- Seleccione una opción --</option>
-                    {laboratorios.map(lab => <option key={lab.id_laboratorio} value={lab.id_laboratorio}>{lab.nombre}</option>)}
+                    {laboratorios.map(lab => (
+                      <option key={lab.id_laboratorio} value={lab.id_laboratorio}>{lab.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
                 <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Marca Fabricante</label>
@@ -271,7 +283,7 @@ function Inventario() {
                   <input type="text" name="modelo" value={nuevoEquipo.modelo} onChange={handleInputChange} />
                 </div>
               </div>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
                 <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Inversión Inicial ($)</label>
@@ -279,18 +291,22 @@ function Inventario() {
                 </div>
                 <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Límite de Operación (Horas)</label>
-                  <input type="number" step="0.1" name="limite_horas" value={nuevoEquipo.limite_horas} onChange={handleInputChange} placeholder="Parámetro opcional" title="Establecer límite de horas de servicio antes de requerir inspección técnica" />
+                  <input type="number" step="0.1" name="limite_horas" value={nuevoEquipo.limite_horas} onChange={handleInputChange} placeholder="Parámetro opcional" />
                 </div>
               </div>
-              
+
               <div className="form-group" style={{ marginBottom: '25px' }}>
                 <label>{modoEdicion ? 'Actualización de Documento Gráfico' : 'Documento Gráfico (Fotografía)'}</label>
                 <input type="file" accept="image/*" onChange={handleFileChange} />
               </div>
 
               <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={subiendo}>Cancelar Operación</button>
-                <button type="submit" className="btn-primary" disabled={subiendo}>{subiendo ? 'Procesando Transacción...' : modoEdicion ? 'Aplicar Modificaciones' : 'Confirmar Registro'}</button>
+                <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={subiendo}>
+                  Cancelar Operación
+                </button>
+                <button type="submit" className="btn-primary" disabled={subiendo}>
+                  {subiendo ? 'Procesando...' : modoEdicion ? 'Aplicar Modificaciones' : 'Confirmar Registro'}
+                </button>
               </div>
             </form>
           </div>

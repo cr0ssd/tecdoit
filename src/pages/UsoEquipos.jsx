@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabase';
 import { Scanner } from '@yudiel/react-qr-scanner';
+import { usoEquiposAPI } from '../services/api';
 
 function UsoEquipos() {
   const [registros, setRegistros] = useState([]);
   const [cargando, setCargando] = useState(true);
-  
+  const [error, setError] = useState(null);
+  const [mensajeExito, setMensajeExito] = useState(null);
+
   const [mostrarCamara, setMostrarCamara] = useState(false);
 
   const [nuevoUso, setNuevoUso] = useState({
@@ -21,15 +23,11 @@ function UsoEquipos() {
   async function obtenerRegistros() {
     setCargando(true);
     try {
-      const { data, error } = await supabase
-        .from('registro_uso')
-        .select('*, equipos(marca, modelo, laboratorios(nombre))')
-        .order('hora_inicio', { ascending: false });
-      
-      if (error) throw error;
-      if (data) setRegistros(data);
-    } catch (error) {
-      console.error('Error al cargar registros:', error.message);
+      const data = await usoEquiposAPI.obtenerRegistros();
+      setRegistros(data);
+    } catch (err) {
+      console.error('Error al cargar registros:', err.message);
+      setError('No se pudo cargar la bitácora. Verifica que el backend esté corriendo.');
     } finally {
       setCargando(false);
     }
@@ -43,7 +41,6 @@ function UsoEquipos() {
     if (!resultado) return;
 
     let textoDetectado = '';
-
     if (Array.isArray(resultado) && resultado.length > 0) {
       textoDetectado = resultado[0].rawValue;
     } else if (typeof resultado === 'string') {
@@ -53,83 +50,51 @@ function UsoEquipos() {
     if (textoDetectado) {
       setNuevoUso(prev => ({ ...prev, clave_activo: textoDetectado }));
       setMostrarCamara(false);
-      alert(`¡Código escaneado: ${textoDetectado}!`);
+      setMensajeExito(`Código escaneado: ${textoDetectado}`);
+      setTimeout(() => setMensajeExito(null), 3000);
     }
   };
 
   const iniciarUso = async (e) => {
     e.preventDefault();
+    setError(null);
+    setMensajeExito(null);
     try {
-      const { data: equipo, error: errorEq } = await supabase
-        .from('equipos')
-        .select('estatus')
-        .eq('clave_activo', nuevoUso.clave_activo)
-        .single();
-
-      if (errorEq || !equipo) throw new Error('Equipo no encontrado. Verifica la clave.');
-      if (equipo.estatus !== 'Activo') throw new Error('El equipo no está Activo (puede estar en mantenimiento).');
-
-      const { data: usoActivo } = await supabase
-        .from('registro_uso')
-        .select('id_uso')
-        .eq('clave_activo', nuevoUso.clave_activo)
-        .eq('estatus', 'En uso');
-      
-      if (usoActivo && usoActivo.length > 0) throw new Error('Este equipo ya está en uso actualmente. Deben finalizar la sesión anterior.');
-
-      const { error } = await supabase
-        .from('registro_uso')
-        .insert([{
-          clave_activo: nuevoUso.clave_activo,
-          usuario_nombre: nuevoUso.usuario_nombre,
-          proposito: nuevoUso.proposito
-        }]);
-
-      if (error) throw error;
-      
-      alert('¡Sesión de uso iniciada correctamente!');
+      await usoEquiposAPI.iniciarUso({
+        clave_activo: nuevoUso.clave_activo,
+        usuario_nombre: nuevoUso.usuario_nombre,
+        proposito: nuevoUso.proposito
+      });
+      setMensajeExito('Sesión de uso iniciada correctamente.');
       setNuevoUso({ clave_activo: '', usuario_nombre: '', proposito: '' });
-      obtenerRegistros(); 
-    } catch (error) {
-      alert(error.message);
+      obtenerRegistros();
+    } catch (err) {
+      // Error message comes directly from backend validation
+      setError(err.message);
     }
   };
 
   const finalizarUso = async (id_uso) => {
+    setError(null);
     try {
-      const { error } = await supabase
-        .from('registro_uso')
-        .update({ 
-          estatus: 'Finalizado', 
-          hora_fin: new Date().toISOString() 
-        })
-        .eq('id_uso', id_uso);
-
-      if (error) throw error;
-      alert('Sesión finalizada. Equipo liberado.');
+      await usoEquiposAPI.finalizarUso(id_uso);
+      setMensajeExito('Sesión finalizada. Equipo liberado.');
       obtenerRegistros();
-    } catch (error) {
-      alert('Error al finalizar: ' + error.message);
+    } catch (err) {
+      setError('Error al finalizar: ' + err.message);
     }
   };
 
-  // ACTUALIZADO: Forzamos la zona horaria a CDMX
   const formatearFecha = (fechaIso) => {
     if (!fechaIso) return '-';
-    
-    // Le agregamos la "Z" al final si no la tiene, para asegurarnos de que el navegador
-    // entienda que el servidor le está mandando la hora en formato UTC (Greenwich).
     const fechaUtc = fechaIso.includes('Z') ? fechaIso : `${fechaIso}Z`;
-    const fecha = new Date(fechaUtc);
-    
-    // Lo convertimos a la zona horaria de la Ciudad de México
-    return fecha.toLocaleString('es-MX', { 
+    return new Date(fechaUtc).toLocaleString('es-MX', {
       timeZone: 'America/Mexico_City',
-      day: '2-digit', 
-      month: 'short', 
-      hour: '2-digit', 
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true // Para que muestre a.m. y p.m.
+      hour12: true
     });
   };
 
@@ -140,12 +105,24 @@ function UsoEquipos() {
         <p>Control de bitácora y asignación temporal mediante QR</p>
       </header>
 
+      {error && (
+        <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>
+          {error}
+        </div>
+      )}
+
+      {mensajeExito && (
+        <div style={{ backgroundColor: '#eafaf1', color: '#27ae60', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>
+          {mensajeExito}
+        </div>
+      )}
+
       <section className="kpi-card" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <h2 style={{ fontSize: '16px', color: '#2c3e50' }}>Registrar Nueva Sesión</h2>
-          <button 
-            type="button" 
-            className="btn-secondary" 
+          <button
+            type="button"
+            className="btn-secondary"
             onClick={() => setMostrarCamara(!mostrarCamara)}
             style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
           >
@@ -156,10 +133,10 @@ function UsoEquipos() {
         {mostrarCamara && (
           <div style={{ maxWidth: '300px', margin: '0 auto 20px auto', border: '2px dashed #3498db', padding: '10px', borderRadius: '8px' }}>
             <p style={{ textAlign: 'center', fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>Apunta el código QR a tu cámara</p>
-            <Scanner 
-              onScan={(resultado) => handleQRScan(resultado)} 
-              onResult={(resultado) => handleQRScan(resultado)} 
-              onError={(error) => console.log(error?.message)} 
+            <Scanner
+              onScan={(resultado) => handleQRScan(resultado)}
+              onResult={(resultado) => handleQRScan(resultado)}
+              onError={(error) => console.log(error?.message)}
             />
           </div>
         )}
@@ -167,13 +144,13 @@ function UsoEquipos() {
         <form onSubmit={iniciarUso} style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
             <label>Clave del Equipo</label>
-            <input 
-              type="text" 
-              name="clave_activo" 
-              required 
-              value={nuevoUso.clave_activo} 
-              onChange={handleInputChange} 
-              placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)" 
+            <input
+              type="text"
+              name="clave_activo"
+              required
+              value={nuevoUso.clave_activo}
+              onChange={handleInputChange}
+              placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)"
             />
           </div>
           <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
@@ -209,10 +186,10 @@ function UsoEquipos() {
               registros.map((reg) => (
                 <tr key={reg.id_uso}>
                   <td>
-                    <strong>{reg.clave_activo}</strong><br/>
+                    <strong>{reg.clave_activo}</strong><br />
                     <small>{reg.equipos?.marca} {reg.equipos?.modelo}</small>
                   </td>
-                  <td>{reg.usuario_nombre}<br/><small>{reg.proposito}</small></td>
+                  <td>{reg.usuario_nombre}<br /><small>{reg.proposito}</small></td>
                   <td>{formatearFecha(reg.hora_inicio)}</td>
                   <td>{formatearFecha(reg.hora_fin)}</td>
                   <td>
@@ -222,7 +199,11 @@ function UsoEquipos() {
                   </td>
                   <td>
                     {reg.estatus === 'En uso' ? (
-                      <button className="btn-icon" style={{ borderColor: '#e74c3c', color: '#e74c3c' }} onClick={() => finalizarUso(reg.id_uso)}>
+                      <button
+                        className="btn-icon"
+                        style={{ borderColor: '#e74c3c', color: '#e74c3c' }}
+                        onClick={() => finalizarUso(reg.id_uso)}
+                      >
                         Finalizar
                       </button>
                     ) : (

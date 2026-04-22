@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { supabase } from '../services/supabase';
-import { mantenimientosAPI } from '../services/api';
+import { mantenimientosAPI, proveedoresAPI, equiposAPI } from '../services/api';
 
 function Mantenimiento() {
   const location = useLocation();
   const [mantenimientos, setMantenimientos] = useState([]);
   const [equiposDisponibles, setEquiposDisponibles] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [cargando, setCargando] = useState(true);
-  
+
   const [mostrarModal, setMostrarModal] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Estado basado en los campos de tu captura de pantalla
   const [nuevoMantenimiento, setNuevoMantenimiento] = useState({
     clave_activo: '',
-    tipo_servicio: '',
+    tipo_mantenimiento: '',
     descripcion: '',
-    proveedor: '',
+    id_proveedor: '',
     fecha_programada: '',
     costo_estimado: ''
   });
@@ -36,25 +36,19 @@ function Mantenimiento() {
 
   async function obtenerDatos() {
     setCargando(true);
+    setError(null);
     try {
-      // Se asume la existencia de estas columnas basándonos en tu interfaz
-      const { data: dataMant, error: errorMant } = await supabase
-        .from('mantenimientos')
-        .select('*, equipos(marca, modelo)')
-        .order('fecha_programada', { ascending: false });
-      
-      if (errorMant) throw errorMant;
-      if (dataMant) setMantenimientos(dataMant);
-
-      const { data: dataEq, error: errorEq } = await supabase
-        .from('equipos')
-        .select('clave_activo, marca, modelo, estatus');
-      
-      if (errorEq) throw errorEq;
-      if (dataEq) setEquiposDisponibles(dataEq);
-
-    } catch (error) {
-      console.error('Error al cargar información de mantenimiento:', error.message);
+      const [dataMant, dataEq, dataProv] = await Promise.all([
+        mantenimientosAPI.obtenerTodos(),
+        equiposAPI.obtenerTodos(),
+        proveedoresAPI.obtenerTodos()
+      ]);
+      setMantenimientos(dataMant);
+      setEquiposDisponibles(dataEq);
+      setProveedores(dataProv);
+    } catch (err) {
+      console.error('Error al cargar información de mantenimiento:', err.message);
+      setError('No se pudo conectar con el servidor. Verifica que el backend esté corriendo.');
     } finally {
       setCargando(false);
     }
@@ -68,65 +62,56 @@ function Mantenimiento() {
   const abrirModalNuevo = (clavePredefinida = '') => {
     setNuevoMantenimiento({
       clave_activo: clavePredefinida,
-      tipo_servicio: '',
+      tipo_mantenimiento: '',
       descripcion: '',
-      proveedor: '',
+      id_proveedor: '',
       fecha_programada: '',
       costo_estimado: ''
     });
+    setError(null);
     setMostrarModal(true);
   };
 
   const guardarMantenimiento = async (e) => {
-   e.preventDefault();
-   setGuardando(true);
-   try {
-    await mantenimientosAPI.crear({
-      clave_activo: nuevoMantenimiento.clave_activo,
-      tipo_servicio: nuevoMantenimiento.tipo_servicio,
-      descripcion: nuevoMantenimiento.descripcion,
-      proveedor: nuevoMantenimiento.proveedor,
-      fecha_programada: nuevoMantenimiento.fecha_programada,
-      costo_estimado: nuevoMantenimiento.costo_estimado
-    });
-    setMostrarModal(false);
-    obtenerDatos(); // still calls Supabase directly — that's fine for now
-  } catch (error) {
-    console.error('Error al registrar servicio:', error.message);
-  } finally {
-    setGuardando(false);
-  }
-};
+    e.preventDefault();
+    setGuardando(true);
+    setError(null);
+    try {
+      await mantenimientosAPI.crear({
+        clave_activo: nuevoMantenimiento.clave_activo,
+        tipo_mantenimiento: nuevoMantenimiento.tipo_mantenimiento,
+        descripcion: nuevoMantenimiento.descripcion,
+        id_proveedor: nuevoMantenimiento.id_proveedor || null,
+        fecha_programada: nuevoMantenimiento.fecha_programada,
+        costo_estimado: nuevoMantenimiento.costo_estimado
+      });
+      setMostrarModal(false);
+      obtenerDatos();
+    } catch (err) {
+      console.error('Error al registrar servicio:', err.message);
+      setError('Error al registrar el servicio. Intenta de nuevo.');
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   const completarMantenimiento = async (id_mantenimiento, clave_activo) => {
     try {
-      const { error: errMant } = await supabase
-        .from('mantenimientos')
-        .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
-        .eq('id', id_mantenimiento);
-        
-      if (errMant) throw errMant;
-
-      const { error: errEq } = await supabase
-        .from('equipos')
-        .update({ estatus: 'Activo' })
-        .eq('clave_activo', clave_activo);
-
-      if (errEq) throw errEq;
-
+      await mantenimientosAPI.completar(id_mantenimiento, clave_activo);
       obtenerDatos();
-    } catch (error) {
-      alert('Error al completar el servicio: ' + error.message);
+    } catch (err) {
+      console.error('Error al completar el servicio:', err.message);
+      setError('Error al completar el servicio. Intenta de nuevo.');
     }
   };
 
   const formatearFecha = (fechaIso) => {
     if (!fechaIso) return '-';
-    const fecha = new Date(fechaIso);
-    return fecha.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+    return new Date(fechaIso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
+  const formatoMoneda = (cantidad) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
 
   return (
     <div className="dashboard-container">
@@ -137,6 +122,12 @@ function Mantenimiento() {
         </div>
         <button className="btn-primary" onClick={() => abrirModalNuevo('')}>+ Registrar Servicio</button>
       </header>
+
+      {error && (
+        <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>
+          {error}
+        </div>
+      )}
 
       <section className="table-container">
         <table className="data-table">
@@ -157,16 +148,16 @@ function Mantenimiento() {
               <tr><td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>No existen registros en el sistema.</td></tr>
             ) : (
               mantenimientos.map((mant) => (
-                <tr key={mant.id}>
+                <tr key={mant.id_mantenimiento}>
                   <td>
                     <strong>{mant.clave_activo}</strong><br/>
                     <small style={{ color: '#7f8c8d' }}>{mant.equipos?.marca} {mant.equipos?.modelo}</small>
                   </td>
                   <td>
-                    <strong>{mant.tipo_servicio}</strong><br/>
+                    <strong>{mant.tipo_mantenimiento}</strong><br/>
                     <small>{mant.descripcion}</small>
                   </td>
-                  <td>{mant.proveedor || 'Resolución Interna'}</td>
+                  <td>{mant.proveedores?.nombre || 'Resolución Interna'}</td>
                   <td>
                     <small>Prog: {formatearFecha(mant.fecha_programada)}</small><br/>
                     <small>Cierre: {mant.fecha_cierre ? formatearFecha(mant.fecha_cierre) : '-'}</small>
@@ -179,10 +170,10 @@ function Mantenimiento() {
                   </td>
                   <td>
                     {mant.estatus !== 'Completado' && (
-                      <button 
-                        className="btn-icon" 
-                        style={{ color: '#27ae60', borderColor: '#27ae60' }} 
-                        onClick={() => completarMantenimiento(mant.id, mant.clave_activo)}
+                      <button
+                        className="btn-icon"
+                        style={{ color: '#27ae60', borderColor: '#27ae60' }}
+                        onClick={() => completarMantenimiento(mant.id_mantenimiento, mant.clave_activo)}
                       >
                         ✓ Completar
                       </button>
@@ -201,8 +192,14 @@ function Mantenimiento() {
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
               Registrar Nuevo Mantenimiento
             </h2>
+
+            {error && (
+              <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>
+                {error}
+              </div>
+            )}
+
             <form onSubmit={guardarMantenimiento}>
-              
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 <div className="form-group">
                   <label>Equipo</label>
@@ -210,43 +207,43 @@ function Mantenimiento() {
                     <option value="">-- Seleccionar --</option>
                     {equiposDisponibles.map(eq => (
                       <option key={eq.clave_activo} value={eq.clave_activo}>
-                        {eq.clave_activo}
+                        {eq.clave_activo} — {eq.marca} {eq.modelo}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group">
                   <label>Tipo de Servicio</label>
-                  <select name="tipo_servicio" value={nuevoMantenimiento.tipo_servicio} onChange={handleInputChange} required>
+                  <select name="tipo_mantenimiento" value={nuevoMantenimiento.tipo_mantenimiento} onChange={handleInputChange} required>
                     <option value="">-- Seleccionar --</option>
                     <option value="Preventivo">Preventivo</option>
                     <option value="Correctivo">Correctivo</option>
-                    <option value="Limpieza">Limpieza</option>
-                    <option value="Calibración">Calibración</option>
                   </select>
                 </div>
               </div>
 
               <div className="form-group">
                 <label>Descripción del Problema / Servicio</label>
-                <input 
-                  type="text" 
-                  name="descripcion" 
-                  value={nuevoMantenimiento.descripcion} 
-                  onChange={handleInputChange} 
-                  required 
-                  placeholder="Ej. Cambio de aceite, calibración..." 
+                <input
+                  type="text"
+                  name="descripcion"
+                  value={nuevoMantenimiento.descripcion}
+                  onChange={handleInputChange}
+                  required
+                  placeholder="Ej. Cambio de aceite, calibración..."
                   style={{ width: '100%', padding: '8px', border: '1px solid #bdc3c7', borderRadius: '4px' }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Proveedor Asignado (Opcional)</label>
-                <select name="proveedor" value={nuevoMantenimiento.proveedor} onChange={handleInputChange}>
+                <select name="id_proveedor" value={nuevoMantenimiento.id_proveedor} onChange={handleInputChange}>
                   <option value="">Resolución Interna</option>
-                  <option value="TechFix Solutions">TechFix Solutions</option>
-                  <option value="Soporte Externo S.A.">Soporte Externo S.A.</option>
-                  <option value="Garantía Fabricante">Garantía Fabricante</option>
+                  {proveedores.map(prov => (
+                    <option key={prov.id_proveedor} value={prov.id_proveedor}>
+                      {prov.nombre}{prov.es_preferido ? ' ⭐' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -263,7 +260,9 @@ function Mantenimiento() {
 
               <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
                 <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={guardando}>Cancelar</button>
-                <button type="submit" className="btn-primary" disabled={guardando}>{guardando ? 'Procesando...' : 'Registrar Servicio'}</button>
+                <button type="submit" className="btn-primary" disabled={guardando}>
+                  {guardando ? 'Procesando...' : 'Registrar Servicio'}
+                </button>
               </div>
             </form>
           </div>

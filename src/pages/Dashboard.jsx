@@ -1,32 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../services/supabase';
+import { dashboardAPI } from '../services/api';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function Dashboard() {
   const navigate = useNavigate();
-  
-  const [metricas, setMetricas] = useState({ 
-    totalEquipos: 0, 
-    mantenimientoActivo: 0, 
-    prestados: 0, 
-    opexMantenimientos: 0, 
-    opexReposiciones: 0, 
-    opexTotal: 0 
+
+  const [metricas, setMetricas] = useState({
+    totalEquipos: 0,
+    mantenimientoActivo: 0,
+    prestados: 0,
+    opexMantenimientos: 0,
+    opexReposiciones: 0,
+    opexTotal: 0
   });
-  
+
   const [actividadReciente, setActividadReciente] = useState([]);
   const [prestamosActivos, setPrestamosActivos] = useState([]);
-  
-  const [notificaciones, setNotificaciones] = useState([]); 
-  const [leidasLocales, setLeidasLocales] = useState([]); 
+
+  const [notificaciones, setNotificaciones] = useState([]);
+  const [leidasLocales, setLeidasLocales] = useState([]);
   const [mostrarMenuNotificaciones, setMostrarMenuNotificaciones] = useState(false);
 
   const [datosGraficaEstatus, setDatosGraficaEstatus] = useState([]);
   const [datosGraficaLabs, setDatosGraficaLabs] = useState([]);
   const [cargando, setCargando] = useState(true);
 
-  const COLORES_ESTATUS = ['#27ae60', '#f39c12', '#3498db']; 
+  const COLORES_ESTATUS = ['#27ae60', '#f39c12', '#3498db'];
 
   useEffect(() => {
     obtenerDatosDashboard();
@@ -36,70 +36,60 @@ function Dashboard() {
   async function obtenerDatosDashboard() {
     try {
       setCargando(true);
-      
-      const { data: dataEquipos, error: errEq } = await supabase
-        .from('equipos')
-        .select('clave_activo, marca, modelo, estatus, costo, fecha_registro, horas_acumuladas, limite_horas, mantenimiento_urgente, laboratorios(nombre)')
-        .order('fecha_registro', { ascending: false });
-      if (errEq) throw errEq;
 
-      const { data: dataMant } = await supabase.from('mantenimientos').select('costo');
-      
-      const { data: dataUso } = await supabase
-        .from('registro_uso')
-        .select('*, equipos(marca, modelo, laboratorios(nombre))')
-        .eq('estatus', 'En uso');
+      // All four fetches run in parallel — faster than sequential
+      const [dataEquipos, dataMant, dataUso, dataNotificaciones] = await Promise.all([
+        dashboardAPI.obtenerEquipos(),
+        dashboardAPI.obtenerCostosMantenimientos(),
+        dashboardAPI.obtenerPrestamosActivos(),
+        dashboardAPI.obtenerNotificaciones()
+      ]);
 
-      const { data: dataNotificaciones } = await supabase
-        .from('post1')
-        .select('*, author1(nombre)')
-        .order('fecha', { ascending: false })
-        .limit(20);
+      const totalEquipos = dataEquipos.length;
+      const mantenimientoActivo = dataEquipos.filter(e => e.estatus === 'En Mantenimiento').length;
+      const prestados = dataUso.length;
 
-      if (dataEquipos) {
-        const totalEquipos = dataEquipos.length;
-        const mantenimientoActivo = dataEquipos.filter(e => e.estatus === 'En Mantenimiento').length;
-        const prestados = dataUso ? dataUso.length : 0;
+      // OpEx calculation stays in frontend per PROJECT.MD Rule 2 (KISS)
+      const opexReposiciones = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
+      const opexMantenimientos = dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
+      const opexTotal = opexReposiciones + opexMantenimientos;
 
-        // Cálculo de OpEx: Sumatoria de costos de todos los equipos (Reposiciones) y Mantenimientos
-        const opexReposiciones = dataEquipos.reduce((sum, item) => sum + (Number(item.costo) || 0), 0);
-        const opexMantenimientos = dataMant ? dataMant.reduce((sum, item) => sum + (Number(item.costo) || 0), 0) : 0;
-        const opexTotal = opexReposiciones + opexMantenimientos;
+      // Dynamic alerts generated from equipment state — pure frontend logic
+      const alertasDinamicas = dataEquipos
+        .filter(e => e.mantenimiento_urgente || (e.horas_acumuladas || 0) >= (e.limite_horas || 8))
+        .map(e => ({
+          id: `din-${e.clave_activo}`,
+          clave_activo: e.clave_activo,
+          mensaje: e.mantenimiento_urgente
+            ? 'Requiere mantenimiento urgente.'
+            : `Límite operativo de ${e.limite_horas} horas alcanzado.`,
+          tipo: e.mantenimiento_urgente ? 'Critico' : 'Advertencia',
+          fecha: new Date().toISOString(),
+          author1: { nombre: 'Sistema' },
+          leida: leidasLocales.includes(`din-${e.clave_activo}`)
+        }));
 
-        const alertasDinamicas = dataEquipos
-          .filter(e => e.mantenimiento_urgente || (e.horas_acumuladas || 0) >= (e.limite_horas || 8))
-          .map(e => ({
-            id: `din-${e.clave_activo}`,
-            clave_activo: e.clave_activo,
-            mensaje: e.mantenimiento_urgente ? 'Requiere mantenimiento urgente.' : `Límite operativo de ${e.limite_horas} horas alcanzado.`,
-            tipo: e.mantenimiento_urgente ? 'Critico' : 'Advertencia',
-            fecha: new Date().toISOString(),
-            author1: { nombre: 'Sistema' },
-            leida: leidasLocales.includes(`din-${e.clave_activo}`)
-          }));
+      setMetricas({ totalEquipos, mantenimientoActivo, prestados, opexMantenimientos, opexReposiciones, opexTotal });
+      setActividadReciente(dataEquipos.slice(0, 5));
+      setPrestamosActivos(dataUso);
 
-        setMetricas({ totalEquipos, mantenimientoActivo, prestados, opexMantenimientos, opexReposiciones, opexTotal });
-        setActividadReciente(dataEquipos.slice(0, 5));
-        setPrestamosActivos(dataUso || []);
-        
-        const todasNotificaciones = [...alertasDinamicas, ...(dataNotificaciones || [])];
-        todasNotificaciones.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-        setNotificaciones(todasNotificaciones);
+      const todasNotificaciones = [...alertasDinamicas, ...dataNotificaciones];
+      todasNotificaciones.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+      setNotificaciones(todasNotificaciones);
 
-        setDatosGraficaEstatus([
-          { name: 'Disponibles', value: (totalEquipos - mantenimientoActivo) - prestados },
-          { name: 'En Mantenimiento', value: mantenimientoActivo },
-          { name: 'En Uso (Prestados)', value: prestados }
-        ]);
+      setDatosGraficaEstatus([
+        { name: 'Disponibles', value: (totalEquipos - mantenimientoActivo) - prestados },
+        { name: 'En Mantenimiento', value: mantenimientoActivo },
+        { name: 'En Uso (Prestados)', value: prestados }
+      ]);
 
-        const conteoLabs = {};
-        dataEquipos.forEach(equipo => {
-          const nombreLab = equipo.laboratorios?.nombre || 'Sin asignar';
-          conteoLabs[nombreLab] = (conteoLabs[nombreLab] || 0) + 1;
-        });
-        const datosBarras = Object.keys(conteoLabs).map(llave => ({ nombre: llave, Cantidad: conteoLabs[llave] }));
-        setDatosGraficaLabs(datosBarras);
-      }
+      const conteoLabs = {};
+      dataEquipos.forEach(equipo => {
+        const nombreLab = equipo.laboratorios?.nombre || 'Sin asignar';
+        conteoLabs[nombreLab] = (conteoLabs[nombreLab] || 0) + 1;
+      });
+      setDatosGraficaLabs(Object.keys(conteoLabs).map(llave => ({ nombre: llave, Cantidad: conteoLabs[llave] })));
+
     } catch (error) {
       console.error('Error en la carga de métricas operativas:', error.message);
     } finally {
@@ -108,13 +98,14 @@ function Dashboard() {
   }
 
   const procesarClicNotificacion = async (notif) => {
+    // Optimistic UI update first — Rule 3
     if (!notif.leida) {
       setNotificaciones(prev => prev.map(n => n.id === notif.id ? { ...n, leida: true } : n));
       if (String(notif.id).startsWith('din-')) {
         setLeidasLocales(prev => [...prev, notif.id]);
       } else {
         try {
-          await supabase.from('post1').update({ leida: true }).eq('id', notif.id);
+          await dashboardAPI.marcarNotificacionLeida(notif.id);
         } catch (error) {
           console.error('Error al actualizar estado de lectura:', error.message);
         }
@@ -126,18 +117,24 @@ function Dashboard() {
 
   const marcarTodasComoLeidas = async () => {
     try {
-      const idsDinamicas = notificaciones.filter(n => !n.leida && String(n.id).startsWith('din-')).map(n => n.id);
+      // Optimistic update for dynamic alerts
+      const idsDinamicas = notificaciones
+        .filter(n => !n.leida && String(n.id).startsWith('din-'))
+        .map(n => n.id);
       if (idsDinamicas.length > 0) setLeidasLocales(prev => [...prev, ...idsDinamicas]);
-      const { error } = await supabase.from('post1').update({ leida: true }).eq('leida', false);
-      if (error) throw error;
+
+      await dashboardAPI.marcarTodasLeidas();
       obtenerDatosDashboard();
     } catch (error) {
-      alert('Error en actualización masiva:', error.message);
+      console.error('Error en actualización masiva:', error.message);
     }
   };
 
-  const formatoMoneda = (cantidad) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
-  const formatearFecha = (fechaIso) => new Date(fechaIso).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute:'2-digit' });
+  const formatoMoneda = (cantidad) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(cantidad);
+
+  const formatearFecha = (fechaIso) =>
+    new Date(fechaIso).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   const notificacionesPendientes = notificaciones.filter(n => !n.leida).length;
 
@@ -148,11 +145,11 @@ function Dashboard() {
           <h1>Inicio</h1>
           <p>Análisis de gastos de operación y estatus de la red</p>
         </div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ position: 'relative' }}>
-            <button 
-              onClick={() => setMostrarMenuNotificaciones(!mostrarMenuNotificaciones)} 
+            <button
+              onClick={() => setMostrarMenuNotificaciones(!mostrarMenuNotificaciones)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', padding: '5px' }}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2c3e50" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -160,10 +157,10 @@ function Dashboard() {
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
               </svg>
               {notificacionesPendientes > 0 && (
-                <span style={{ 
-                  position: 'absolute', top: '0px', right: '0px', backgroundColor: '#e74c3c', color: 'white', 
-                  borderRadius: '50%', minWidth: '16px', height: '16px', fontSize: '10px', 
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' 
+                <span style={{
+                  position: 'absolute', top: '0px', right: '0px', backgroundColor: '#e74c3c', color: 'white',
+                  borderRadius: '50%', minWidth: '16px', height: '16px', fontSize: '10px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold'
                 }}>
                   {notificacionesPendientes}
                 </span>
@@ -171,10 +168,10 @@ function Dashboard() {
             </button>
 
             {mostrarMenuNotificaciones && (
-              <div style={{ 
-                position: 'absolute', right: 0, top: '40px', width: '380px', backgroundColor: '#ffffff', 
-                border: '1px solid #e0e0e0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', 
-                zIndex: 1000, overflow: 'hidden' 
+              <div style={{
+                position: 'absolute', right: 0, top: '40px', width: '380px', backgroundColor: '#ffffff',
+                border: '1px solid #e0e0e0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                zIndex: 1000, overflow: 'hidden'
               }}>
                 <div style={{ padding: '12px 15px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong style={{ fontSize: '14px', color: '#2c3e50' }}>Centro de Notificaciones</strong>
@@ -189,23 +186,27 @@ function Dashboard() {
                     <div style={{ padding: '20px', textAlign: 'center', color: '#7f8c8d', fontSize: '13px' }}>Bandeja vacía</div>
                   ) : (
                     notificaciones.map((notif, index) => (
-                      <div 
-                        key={notif.id || index} 
+                      <div
+                        key={notif.id || index}
                         onClick={() => procesarClicNotificacion(notif)}
-                        style={{ 
-                          padding: '12px 15px', 
-                          borderBottom: '1px solid #f0f0f0', 
-                          cursor: 'pointer', 
+                        style={{
+                          padding: '12px 15px',
+                          borderBottom: '1px solid #f0f0f0',
+                          cursor: 'pointer',
                           backgroundColor: notif.leida ? '#ffffff' : '#f4f6f7',
                           transition: 'background-color 0.2s ease'
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <strong style={{ fontSize: '13px', color: notif.tipo === 'Critico' ? '#e74c3c' : '#2c3e50', fontWeight: notif.leida ? 'normal' : 'bold' }}>{notif.clave_activo}</strong>
-                          <span style={{ fontSize: '10px', backgroundColor: notif.tipo === 'Critico' ? '#fadbd8' : '#fcf3cf', color: notif.tipo === 'Critico' ? '#c0392b' : '#d35400', padding: '2px 6px', borderRadius: '4px' }}>{notif.tipo}</span>
+                          <strong style={{ fontSize: '13px', color: notif.tipo === 'Critico' ? '#e74c3c' : '#2c3e50', fontWeight: notif.leida ? 'normal' : 'bold' }}>
+                            {notif.clave_activo}
+                          </strong>
+                          <span style={{ fontSize: '10px', backgroundColor: notif.tipo === 'Critico' ? '#fadbd8' : '#fcf3cf', color: notif.tipo === 'Critico' ? '#c0392b' : '#d35400', padding: '2px 6px', borderRadius: '4px' }}>
+                            {notif.tipo}
+                          </span>
                         </div>
                         <span style={{ fontSize: '13px', color: '#34495e' }}>{notif.mensaje}</span>
-                        <span style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
+                        <span style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px', display: 'block' }}>
                           {notif.author1?.nombre || 'Sistema'} • {formatearFecha(notif.fecha)}
                         </span>
                       </div>
@@ -224,7 +225,7 @@ function Dashboard() {
           <p className="kpi-number">{cargando ? '...' : metricas.totalEquipos}</p>
           <span className="kpi-status ok">Operación General</span>
         </div>
-        
+
         <div className="kpi-card">
           <h3>Asignaciones Temporales</h3>
           <p className="kpi-number" style={{ color: '#3498db' }}>{cargando ? '...' : metricas.prestados}</p>
@@ -263,10 +264,12 @@ function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={datosGraficaEstatus} innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value">
-                    {datosGraficaEstatus.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORES_ESTATUS[index % COLORES_ESTATUS.length]} />)}
+                    {datosGraficaEstatus.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORES_ESTATUS[index % COLORES_ESTATUS.length]} />
+                    ))}
                   </Pie>
                   <Tooltip />
-                  <Legend verticalAlign="bottom" height={36}/>
+                  <Legend verticalAlign="bottom" height={36} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -280,9 +283,9 @@ function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={datosGraficaLabs} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="nombre" tick={{fontSize: 12}} />
+                  <XAxis dataKey="nombre" tick={{ fontSize: 12 }} />
                   <YAxis allowDecimals={false} />
-                  <Tooltip cursor={{fill: '#f4f7f6'}} />
+                  <Tooltip cursor={{ fill: '#f4f7f6' }} />
                   <Bar dataKey="Cantidad" fill="#2c3e50" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -291,7 +294,6 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* Aquí están de vuelta tus tablas inferiores */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '30px' }}>
         <section className="recent-activity">
           <h2>Registro de Asignaciones Temporales</h2>
@@ -312,7 +314,7 @@ function Dashboard() {
                 ) : (
                   prestamosActivos.map((uso) => (
                     <tr key={uso.id_uso}>
-                      <td><strong>{uso.clave_activo}</strong><br/><small>{uso.equipos?.marca}</small></td>
+                      <td><strong>{uso.clave_activo}</strong><br /><small>{uso.equipos?.marca}</small></td>
                       <td>{uso.equipos?.laboratorios?.nombre || 'N/D'}</td>
                       <td>{uso.usuario_nombre}</td>
                     </tr>
@@ -342,7 +344,7 @@ function Dashboard() {
                 ) : (
                   actividadReciente.map((item) => (
                     <tr key={item.clave_activo}>
-                      <td><strong>{item.clave_activo}</strong><br/><small>{item.marca}</small></td>
+                      <td><strong>{item.clave_activo}</strong><br /><small>{item.marca}</small></td>
                       <td>{item.laboratorios?.nombre || 'Sin asignación formal'}</td>
                       <td><span className={`badge ${item.estatus === 'Activo' ? 'ok' : 'warning'}`}>{item.estatus}</span></td>
                     </tr>
