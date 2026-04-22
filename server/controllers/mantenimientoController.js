@@ -50,7 +50,31 @@ const crearMantenimiento = async (req, res) => {
   }
 };
 
+const completarMantenimiento = async (req, res) => {
+  const { id } = req.params;
+  const { clave_activo } = req.body;
+  try {
+    const { error: errMant } = await supabase
+      .from('mantenimientos')
+      .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
+      .eq('id', id);
+    if (errMant) throw errMant;
+
+    const { error: errEq } = await supabase
+      .from('equipos')
+      .update({ estatus: 'Activo' })
+      .eq('clave_activo', clave_activo);
+    if (errEq) throw errEq;
+
+    res.status(200).json({ mensaje: 'Servicio completado y equipo reactivado.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
 module.exports = {
   obtenerMantenimientos,
-  crearMantenimiento
+  crearMantenimiento,
+  completarMantenimiento
 };
