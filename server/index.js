@@ -10,16 +10,16 @@ app.use(express.json());
 
 const mantenimientoRoutes = require('./routes/mantenimientoRoutes');
 const proveedoresRoutes = require('./routes/proveedoresRoutes');
+const equiposRoutes = require('./routes/equiposRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const usoEquiposRoutes = require('./routes/usoEquiposRoutes');
-const equiposRoutes = require('./routes/equiposRoutes');
 const inventarioRoutes = require('./routes/inventarioRoutes');
-
+ 
 app.use('/api/mantenimientos', mantenimientoRoutes);
 app.use('/api/proveedores', proveedoresRoutes);
-app.use('/api/uso-equipos', usoEquiposRoutes);
 app.use('/api/equipos', equiposRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/uso-equipos', usoEquiposRoutes);
 app.use('/api/inventario', inventarioRoutes);
   
 const PORT = process.env.PORT || 3001;
