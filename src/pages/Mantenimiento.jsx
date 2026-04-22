@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabase';
+import { mantenimientosAPI } from '../services/api';
 
 function Mantenimiento() {
   const location = useLocation();
@@ -77,47 +78,25 @@ function Mantenimiento() {
   };
 
   const guardarMantenimiento = async (e) => {
-    e.preventDefault();
-    setGuardando(true);
-
-    try {
-      const costoProcesado = nuevoMantenimiento.costo_estimado ? parseFloat(nuevoMantenimiento.costo_estimado) : 0;
-
-      const { error: errorInsert } = await supabase
-        .from('mantenimientos')
-        .insert([{
-          clave_activo: nuevoMantenimiento.clave_activo,
-          tipo_servicio: nuevoMantenimiento.tipo_servicio,
-          descripcion: nuevoMantenimiento.descripcion,
-          proveedor: nuevoMantenimiento.proveedor,
-          fecha_programada: nuevoMantenimiento.fecha_programada,
-          costo: costoProcesado,
-          estatus: 'Abierto' // Estado inicial del ticket
-        }]);
-
-      if (errorInsert) throw errorInsert;
-
-      // Restablecer parámetros del equipo al abrir el ticket de mantenimiento
-      const { error: errorUpdate } = await supabase
-        .from('equipos')
-        .update({ 
-          estatus: 'En Mantenimiento', 
-          horas_acumuladas: 0, 
-          mantenimiento_urgente: false 
-        })
-        .eq('clave_activo', nuevoMantenimiento.clave_activo);
-
-      if (errorUpdate) throw errorUpdate;
-
-      alert('Servicio registrado exitosamente.');
-      setMostrarModal(false);
-      obtenerDatos();
-    } catch (error) {
-      alert('Error al procesar el registro: ' + error.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
+   e.preventDefault();
+   setGuardando(true);
+   try {
+    await mantenimientosAPI.crear({
+      clave_activo: nuevoMantenimiento.clave_activo,
+      tipo_servicio: nuevoMantenimiento.tipo_servicio,
+      descripcion: nuevoMantenimiento.descripcion,
+      proveedor: nuevoMantenimiento.proveedor,
+      fecha_programada: nuevoMantenimiento.fecha_programada,
+      costo_estimado: nuevoMantenimiento.costo_estimado
+    });
+    setMostrarModal(false);
+    obtenerDatos(); // still calls Supabase directly — that's fine for now
+  } catch (error) {
+    console.error('Error al registrar servicio:', error.message);
+  } finally {
+    setGuardando(false);
+  }
+};
 
   const completarMantenimiento = async (id_mantenimiento, clave_activo) => {
     try {

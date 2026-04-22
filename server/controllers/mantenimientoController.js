@@ -5,7 +5,7 @@ const obtenerMantenimientos = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('mantenimientos')
-      .select('*, equipos(marca, modelo)')
+      .select('*, equipos(marca, modelo), proveedores(nombre)')
       .order('fecha_programada', { ascending: false });
 
     if (error) throw error;
@@ -17,7 +17,14 @@ const obtenerMantenimientos = async (req, res) => {
 
 // Registrar un nuevo mantenimiento (Lógica transaccional aislada)
 const crearMantenimiento = async (req, res) => {
-  const { clave_activo, tipo_servicio, descripcion, proveedor, fecha_programada, costo_estimado } = req.body;
+  const {
+    clave_activo,
+    tipo_mantenimiento,
+    descripcion,
+    id_proveedor,
+    fecha_programada,
+    costo_estimado
+  } = req.body;
 
   try {
     const costoProcesado = costo_estimado ? parseFloat(costo_estimado) : 0;
@@ -26,19 +33,24 @@ const crearMantenimiento = async (req, res) => {
     const { error: errorInsert } = await supabase
       .from('mantenimientos')
       .insert([{
-        clave_activo, tipo_servicio, descripcion, proveedor, fecha_programada,
-        costo: costoProcesado, estatus: 'Abierto'
+        clave_activo,
+        tipo_mantenimiento,
+        descripcion,
+        id_proveedor: id_proveedor || null,
+        fecha_programada,
+        costo: costoProcesado,
+        estatus: 'Abierto'
       }]);
 
     if (errorInsert) throw errorInsert;
 
-    // 2. Actualizar el estatus del equipo
+    // 2. Actualizar el estatus del equipo (side effect)
     const { error: errorUpdate } = await supabase
       .from('equipos')
-      .update({ 
-        estatus: 'En Mantenimiento', 
-        horas_acumuladas: 0, 
-        mantenimiento_urgente: false 
+      .update({
+        estatus: 'En Mantenimiento',
+        horas_acumuladas: 0,
+        mantenimiento_urgente: false
       })
       .eq('clave_activo', clave_activo);
 
@@ -50,20 +62,29 @@ const crearMantenimiento = async (req, res) => {
   }
 };
 
+// Completar un mantenimiento y reactivar el equipo
 const completarMantenimiento = async (req, res) => {
   const { id } = req.params;
   const { clave_activo } = req.body;
+
   try {
+    // 1. Marcar el ticket como completado
     const { error: errMant } = await supabase
       .from('mantenimientos')
-      .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
-      .eq('id', id);
+      .update({
+        estatus: 'Completado',
+        fecha_cierre: new Date().toISOString()
+      })
+      .eq('id_mantenimiento', id);
+
     if (errMant) throw errMant;
 
+    // 2. Reactivar el equipo
     const { error: errEq } = await supabase
       .from('equipos')
       .update({ estatus: 'Activo' })
       .eq('clave_activo', clave_activo);
+
     if (errEq) throw errEq;
 
     res.status(200).json({ mensaje: 'Servicio completado y equipo reactivado.' });
@@ -71,7 +92,6 @@ const completarMantenimiento = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
 
 module.exports = {
   obtenerMantenimientos,
