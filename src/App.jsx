@@ -6,7 +6,9 @@ import Dashboard from './pages/Dashboard';
 import Inventario from './pages/Inventario';
 import UsoEquipos from './pages/UsoEquipos';
 import Mantenimiento from './pages/Mantenimiento';
-import Login from './pages/Login'; // <-- Importamos el Login
+import Preventivo from './pages/Preventivo';
+import Correctivo  from './pages/Correctivo';
+import Login from './pages/Login'; 
 import './App.css'; 
 
 function App() {
@@ -48,6 +50,8 @@ function App() {
           <Route path="inventario" element={<Inventario />} /> 
           <Route path="uso-equipos" element={<UsoEquipos />} />
           <Route path="mantenimiento" element={<Mantenimiento />} />
+          <Route path="preventivo" element={<Preventivo />} />
+          <Route path="correctivo" element={<Correctivo />} />
         </Route>
       </Routes>
     </BrowserRouter>
