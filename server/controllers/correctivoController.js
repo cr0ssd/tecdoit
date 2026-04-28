@@ -39,6 +39,7 @@ async function crearTicket(req, res) {
   const {
     clave_activo,
     descripcion,
+    causa_falla,
     id_proveedor,
     fecha_programada,
     costo,
@@ -54,6 +55,7 @@ async function crearTicket(req, res) {
       clave_activo,
       tipo_mantenimiento: 'Correctivo',
       descripcion,
+      causa_falla: causa_falla || null,
       id_proveedor: id_proveedor || null,
       fecha_programada: fecha_programada || null,
       costo: costo || 0,
@@ -118,10 +120,39 @@ async function completarTicket(req, res) {
   res.json(data);
 }
 
+// PATCH edit an active ticket's fields
+async function editarTicket(req, res) {
+  const { id } = req.params;
+  const { descripcion, causa_falla, id_proveedor, fecha_programada, costo, estatus } = req.body;
+
+  const estatusValidos = ['Abierto', 'En progreso'];
+  if (estatus && !estatusValidos.includes(estatus)) {
+    return res.status(400).json({ error: 'Solo se puede editar un ticket activo (Abierto o En progreso).' });
+  }
+
+  const { data, error } = await supabase
+    .from('mantenimientos')
+    .update({
+      descripcion:      descripcion      ?? undefined,
+      causa_falla:      causa_falla !== undefined ? causa_falla : undefined,
+      id_proveedor:     id_proveedor     ?? null,
+      fecha_programada: fecha_programada ?? null,
+      costo:            costo            ?? 0,
+      estatus:          estatus          ?? undefined,
+    })
+    .eq('id_mantenimiento', id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+}
+
 module.exports = {
   obtenerTickets,
   obtenerTicketsPorEquipo,
   crearTicket,
   actualizarEstatus,
   completarTicket,
+  editarTicket,
 };
