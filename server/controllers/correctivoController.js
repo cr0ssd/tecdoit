@@ -1,27 +1,32 @@
 // server/controllers/correctivoController.js
+// All correctivo data lives in the existing `mantenimientos` table
+// filtered by tipo_mantenimiento = 'Correctivo'
 
 const supabase = require('../config/supabaseClient');
 
-// ── GET all tickets ──────────────────────────────────────────────────────────
+// GET all correctivo tickets
 async function obtenerTickets(req, res) {
   const { data, error } = await supabase
-    .from('correctivo_tickets')
+    .from('mantenimientos')
     .select(`
       *,
+      equipos ( marca, modelo ),
       proveedores ( nombre )
     `)
+    .eq('tipo_mantenimiento', 'Correctivo')
     .order('fecha_reporte', { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 }
 
-// ── GET tickets by machine ───────────────────────────────────────────────────
+// GET correctivo records for a specific machine
 async function obtenerTicketsPorEquipo(req, res) {
   const { clave } = req.params;
   const { data, error } = await supabase
-    .from('correctivo_tickets')
-    .select(`*, proveedores ( nombre )`)
+    .from('mantenimientos')
+    .select(`*, equipos ( marca, modelo ), proveedores ( nombre )`)
+    .eq('tipo_mantenimiento', 'Correctivo')
     .eq('clave_activo', clave)
     .order('fecha_reporte', { ascending: false });
 
@@ -29,34 +34,29 @@ async function obtenerTicketsPorEquipo(req, res) {
   res.json(data);
 }
 
-// ── POST create ticket ───────────────────────────────────────────────────────
+// POST create correctivo ticket
 async function crearTicket(req, res) {
   const {
     clave_activo,
-    descripcion_falla,
-    es_solucion_interna,
-    responsable,
+    descripcion,
     id_proveedor,
-    fecha_estimada_cierre,
-    costo_estimado,
-    notas_seguimiento,
+    fecha_programada,
+    costo,
   } = req.body;
 
-  if (!clave_activo || !descripcion_falla) {
-    return res.status(400).json({ error: 'clave_activo y descripcion_falla son requeridos.' });
+  if (!clave_activo || !descripcion) {
+    return res.status(400).json({ error: 'clave_activo y descripcion son requeridos.' });
   }
 
   const { data, error } = await supabase
-    .from('correctivo_tickets')
+    .from('mantenimientos')
     .insert([{
       clave_activo,
-      descripcion_falla,
-      es_solucion_interna: es_solucion_interna !== false && es_solucion_interna !== 'false',
-      responsable: responsable || null,
+      tipo_mantenimiento: 'Correctivo',
+      descripcion,
       id_proveedor: id_proveedor || null,
-      fecha_estimada_cierre: fecha_estimada_cierre || null,
-      costo_estimado: costo_estimado || 0,
-      notas_seguimiento: notas_seguimiento || null,
+      fecha_programada: fecha_programada || null,
+      costo: costo || 0,
       estatus: 'Abierto',
     }])
     .select()
@@ -64,29 +64,29 @@ async function crearTicket(req, res) {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Auto-update equipo status to En Mantenimiento
+  // Mark equipo as En Mantenimiento
   await supabase
     .from('equipos')
-    .update({ estatus: 'En Mantenimiento' })
+    .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
     .eq('clave_activo', clave_activo);
 
   res.status(201).json(data);
 }
 
-// ── PATCH update estatus only ────────────────────────────────────────────────
+// PATCH update estatus only
 async function actualizarEstatus(req, res) {
   const { id } = req.params;
   const { estatus } = req.body;
 
-  const estatusValidos = ['Abierto', 'En progreso', 'Resuelto', 'Sin solución'];
+  const estatusValidos = ['Abierto', 'En progreso', 'Completado'];
   if (!estatusValidos.includes(estatus)) {
     return res.status(400).json({ error: 'Estatus no válido.' });
   }
 
   const { data, error } = await supabase
-    .from('correctivo_tickets')
+    .from('mantenimientos')
     .update({ estatus })
-    .eq('id', id)
+    .eq('id_mantenimiento', id)
     .select()
     .single();
 
@@ -94,78 +94,28 @@ async function actualizarEstatus(req, res) {
   res.json(data);
 }
 
-// ── PATCH close ticket ───────────────────────────────────────────────────────
-async function cerrarTicket(req, res) {
+// PATCH complete/close a correctivo ticket
+async function completarTicket(req, res) {
   const { id } = req.params;
-  const { tuvo_solucion, descripcion_solucion, costo_real, estatus, fecha_cierre } = req.body;
-
-  // Fetch ticket to get clave_activo
-  const { data: ticket, error: fetchErr } = await supabase
-    .from('correctivo_tickets')
-    .select('clave_activo')
-    .eq('id', id)
-    .single();
-
-  if (fetchErr) return res.status(404).json({ error: 'Ticket no encontrado.' });
+  const { clave_activo } = req.body;
 
   const { data, error } = await supabase
-    .from('correctivo_tickets')
-    .update({
-      tuvo_solucion,
-      descripcion_solucion: descripcion_solucion || null,
-      costo_real: costo_real || null,
-      estatus: estatus || (tuvo_solucion ? 'Resuelto' : 'Sin solución'),
-      fecha_cierre: fecha_cierre || new Date().toISOString(),
-    })
-    .eq('id', id)
+    .from('mantenimientos')
+    .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
+    .eq('id_mantenimiento', id)
     .select()
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Restore equipo to Activo when ticket is closed
-  await supabase
-    .from('equipos')
-    .update({ estatus: 'Activo' })
-    .eq('clave_activo', ticket.clave_activo);
+  if (clave_activo) {
+    await supabase
+      .from('equipos')
+      .update({ estatus: 'Activo' })
+      .eq('clave_activo', clave_activo);
+  }
 
   res.json(data);
-}
-
-// ── GET seguimiento for a ticket ─────────────────────────────────────────────
-async function obtenerSeguimiento(req, res) {
-  const { id } = req.params;
-  const { data, error } = await supabase
-    .from('correctivo_seguimiento')
-    .select('*')
-    .eq('id_ticket', id)
-    .order('fecha', { ascending: true });
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-}
-
-// ── POST add seguimiento note ────────────────────────────────────────────────
-async function agregarSeguimiento(req, res) {
-  const { id } = req.params;
-  const { nota, responsable, estatus_anterior, estatus_nuevo } = req.body;
-
-  if (!nota) return res.status(400).json({ error: 'La nota es requerida.' });
-
-  const { data, error } = await supabase
-    .from('correctivo_seguimiento')
-    .insert([{
-      id_ticket: id,
-      nota,
-      responsable: responsable || null,
-      estatus_anterior: estatus_anterior || null,
-      estatus_nuevo: estatus_nuevo || null,
-    }])
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.status(201).json(data);
 }
 
 module.exports = {
@@ -173,7 +123,5 @@ module.exports = {
   obtenerTicketsPorEquipo,
   crearTicket,
   actualizarEstatus,
-  cerrarTicket,
-  obtenerSeguimiento,
-  agregarSeguimiento,
+  completarTicket,
 };

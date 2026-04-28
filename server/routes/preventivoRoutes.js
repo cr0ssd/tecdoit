@@ -3,17 +3,15 @@
 const express = require('express');
 const router = express.Router();
 const {
-  obtenerConfigs,
+  obtenerPreventivos,
   obtenerFechasCalendario,
-  crearConfig,
-  actualizarConfig,
-  eliminarConfig,
+  crearPreventivo,
+  completarPreventivo,
 } = require('../controllers/preventivoController');
 
-router.get('/',             obtenerConfigs);
-router.get('/calendario',   obtenerFechasCalendario);   // used by Dashboard calendar
-router.post('/',            crearConfig);
-router.put('/:clave',       actualizarConfig);
-router.delete('/:clave',    eliminarConfig);
+router.get('/',              obtenerPreventivos);
+router.get('/calendario',    obtenerFechasCalendario);
+router.post('/',             crearPreventivo);
+router.patch('/:id/completar', completarPreventivo);
 
 module.exports = router;

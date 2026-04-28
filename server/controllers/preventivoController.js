@@ -1,101 +1,109 @@
 // server/controllers/preventivoController.js
+// All preventivo data lives in the existing `mantenimientos` table
+// filtered by tipo_mantenimiento = 'Preventivo'
 
 const supabase = require('../config/supabaseClient');
 
-// ── GET all preventivo configs ───────────────────────────────────────────────
-async function obtenerConfigs(req, res) {
+// GET all preventivo records
+async function obtenerPreventivos(req, res) {
   const { data, error } = await supabase
-    .from('preventivo_config')
+    .from('mantenimientos')
     .select(`
       *,
-      equipo:equipos ( marca, modelo, horas_acumuladas )
+      equipos ( marca, modelo, horas_acumuladas, limite_horas ),
+      proveedores ( nombre )
     `)
-    .order('proxima_fecha', { ascending: true, nullsFirst: false });
+    .eq('tipo_mantenimiento', 'Preventivo')
+    .order('fecha_programada', { ascending: true, nullsFirst: false });
 
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 }
 
-// ── GET calendar dates (for Dashboard calendar widget) ───────────────────────
+// GET calendar due dates (fecha_programada) for preventivos
 async function obtenerFechasCalendario(req, res) {
   const { data, error } = await supabase
-    .from('preventivo_config')
-    .select('clave_activo, proxima_fecha, tipo_requerimiento')
-    .not('proxima_fecha', 'is', null)
-    .order('proxima_fecha', { ascending: true });
+    .from('mantenimientos')
+    .select('clave_activo, fecha_programada, descripcion')
+    .eq('tipo_mantenimiento', 'Preventivo')
+    .neq('estatus', 'Completado')
+    .not('fecha_programada', 'is', null)
+    .order('fecha_programada', { ascending: true });
 
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+
+  // Rename to proxima_fecha so the Dashboard calendar widget works unchanged
+  const mapped = data.map(r => ({
+    clave_activo: r.clave_activo,
+    proxima_fecha: r.fecha_programada,
+    tipo_requerimiento: r.descripcion,
+  }));
+
+  res.json(mapped);
 }
 
-// ── POST create config ───────────────────────────────────────────────────────
-async function crearConfig(req, res) {
+// POST create preventivo — reuses existing mantenimientoController logic
+// but hardcodes tipo_mantenimiento = 'Preventivo'
+async function crearPreventivo(req, res) {
   const {
-    clave_activo, modo, intervalo, intervalo_dias,
-    ultima_ejecucion, proxima_fecha, limite_horas_preventivo,
-    tipo_requerimiento, descripcion_requerimiento,
+    clave_activo,
+    descripcion,
+    id_proveedor,
+    fecha_programada,
+    costo,
   } = req.body;
 
-  if (!clave_activo || !modo) {
-    return res.status(400).json({ error: 'clave_activo y modo son requeridos.' });
+  if (!clave_activo || !descripcion) {
+    return res.status(400).json({ error: 'clave_activo y descripcion son requeridos.' });
   }
 
   const { data, error } = await supabase
-    .from('preventivo_config')
+    .from('mantenimientos')
     .insert([{
-      clave_activo, modo, intervalo: intervalo || null,
-      intervalo_dias: intervalo_dias || null,
-      ultima_ejecucion: ultima_ejecucion || null,
-      proxima_fecha: proxima_fecha || null,
-      limite_horas_preventivo: limite_horas_preventivo || null,
-      tipo_requerimiento: tipo_requerimiento || null,
-      descripcion_requerimiento: descripcion_requerimiento || null,
+      clave_activo,
+      tipo_mantenimiento: 'Preventivo',
+      descripcion,
+      id_proveedor: id_proveedor || null,
+      fecha_programada: fecha_programada || null,
+      costo: costo || 0,
+      estatus: 'Abierto',
     }])
     .select()
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+
+  // Mark equipo as En Mantenimiento
+  await supabase
+    .from('equipos')
+    .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
+    .eq('clave_activo', clave_activo);
+
   res.status(201).json(data);
 }
 
-// ── PUT update config ────────────────────────────────────────────────────────
-async function actualizarConfig(req, res) {
-  const { clave } = req.params;
-  const {
-    modo, intervalo, intervalo_dias,
-    ultima_ejecucion, proxima_fecha, limite_horas_preventivo,
-    tipo_requerimiento, descripcion_requerimiento,
-  } = req.body;
+// PATCH complete a preventivo
+async function completarPreventivo(req, res) {
+  const { id } = req.params;
+  const { clave_activo } = req.body;
 
   const { data, error } = await supabase
-    .from('preventivo_config')
-    .update({
-      modo, intervalo: intervalo || null,
-      intervalo_dias: intervalo_dias || null,
-      ultima_ejecucion: ultima_ejecucion || null,
-      proxima_fecha: proxima_fecha || null,
-      limite_horas_preventivo: limite_horas_preventivo || null,
-      tipo_requerimiento: tipo_requerimiento || null,
-      descripcion_requerimiento: descripcion_requerimiento || null,
-    })
-    .eq('clave_activo', clave)
+    .from('mantenimientos')
+    .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
+    .eq('id_mantenimiento', id)
     .select()
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+
+  if (clave_activo) {
+    await supabase
+      .from('equipos')
+      .update({ estatus: 'Activo' })
+      .eq('clave_activo', clave_activo);
+  }
+
   res.json(data);
 }
 
-// ── DELETE config ────────────────────────────────────────────────────────────
-async function eliminarConfig(req, res) {
-  const { clave } = req.params;
-  const { error } = await supabase
-    .from('preventivo_config')
-    .delete()
-    .eq('clave_activo', clave);
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-}
-
-module.exports = { obtenerConfigs, obtenerFechasCalendario, crearConfig, actualizarConfig, eliminarConfig };
+module.exports = { obtenerPreventivos, obtenerFechasCalendario, crearPreventivo, completarPreventivo };
