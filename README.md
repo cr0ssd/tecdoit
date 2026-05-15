@@ -69,3 +69,4 @@ Para mantener la calidad del código, por favor respeten los siguientes principi
 
 ---
 *Documentación mantenida por la dirección técnica de Zarzilla Games. Última actualización: Sprint de Notificaciones y Mantenimiento.*
+.
