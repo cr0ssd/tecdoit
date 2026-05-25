@@ -8,11 +8,7 @@ const supabase = require('../config/supabaseClient');
 async function obtenerTickets(req, res) {
   const { data, error } = await supabase
     .from('mantenimientos')
-    .select(`
-      *,
-      equipos ( marca, modelo ),
-      proveedores ( nombre )
-    `)
+    .select(`*, equipos ( marca, modelo, id_laboratorio, laboratorios ( id_laboratorio, nombre ) ), proveedores ( nombre )`)
     .eq('tipo_mantenimiento', 'Correctivo')
     .order('fecha_reporte', { ascending: false });
 
@@ -40,6 +36,7 @@ async function crearTicket(req, res) {
     clave_activo,
     descripcion,
     causa_falla,
+    prioridad,
     id_proveedor,
     fecha_programada,
     costo,
@@ -56,6 +53,7 @@ async function crearTicket(req, res) {
       tipo_mantenimiento: 'Correctivo',
       descripcion,
       causa_falla: causa_falla || null,
+      prioridad: prioridad || 0,
       id_proveedor: id_proveedor || null,
       fecha_programada: fecha_programada || null,
       costo: costo || 0,
@@ -123,7 +121,7 @@ async function completarTicket(req, res) {
 // PATCH edit an active ticket's fields
 async function editarTicket(req, res) {
   const { id } = req.params;
-  const { descripcion, causa_falla, id_proveedor, fecha_programada, costo, estatus } = req.body;
+  const { descripcion, causa_falla, prioridad, id_proveedor, fecha_programada, costo, estatus } = req.body;
 
   const estatusValidos = ['Abierto', 'En progreso'];
   if (estatus && !estatusValidos.includes(estatus)) {
@@ -135,6 +133,7 @@ async function editarTicket(req, res) {
     .update({
       descripcion:      descripcion      ?? undefined,
       causa_falla:      causa_falla !== undefined ? causa_falla : undefined,
+      prioridad:        prioridad !== undefined ? prioridad : undefined,
       id_proveedor:     id_proveedor     ?? null,
       fecha_programada: fecha_programada ?? null,
       costo:            costo            ?? 0,

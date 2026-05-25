@@ -39,6 +39,7 @@ function App() {
     return <Login />;
   }
 
+
   // SI SÍ HAY SESIÓN: Mostrar el sistema completo
   return (
     <BrowserRouter>

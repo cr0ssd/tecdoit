@@ -5,7 +5,7 @@ const obtenerMantenimientos = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('mantenimientos')
-      .select('*, equipos(marca, modelo), proveedores(nombre)')
+      .select('*, equipos(marca, modelo, id_laboratorio, laboratorios(id_laboratorio, nombre)), proveedores(nombre)')
       .order('fecha_programada', { ascending: false });
 
     if (error) throw error;

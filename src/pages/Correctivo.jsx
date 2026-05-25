@@ -1,7 +1,59 @@
 import React, { useState, useEffect } from 'react';
-import { proveedoresAPI, equiposAPI } from '../services/api';
+import { proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
 
 const API_URL = import.meta.env.VITE_API_URL;
+
+
+const PRIORIDAD_CONFIG = [
+  { valor: 0, label: 'Sin definir', color: '#bdc3c7', bg: '#f4f6f7' },
+  { valor: 1, label: 'Muy baja',    color: '#27ae60', bg: '#eafaf1' },
+  { valor: 2, label: 'Baja',        color: '#2ecc71', bg: '#d5f5e3' },
+  { valor: 3, label: 'Media',       color: '#f39c12', bg: '#fef5e7' },
+  { valor: 4, label: 'Alta',        color: '#e67e22', bg: '#fdebd0' },
+  { valor: 5, label: 'Crítica',     color: '#e74c3c', bg: '#fadbd8' },
+];
+
+function PrioridadSelector({ value, onChange }) {
+  return (
+    <div className="form-group">
+      <label>Prioridad</label>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+        {PRIORIDAD_CONFIG.map(p => (
+          <button
+            key={p.valor}
+            type="button"
+            onClick={() => onChange(p.valor)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '20px',
+              border: `2px solid ${value === p.valor ? p.color : '#ecf0f1'}`,
+              backgroundColor: value === p.valor ? p.bg : 'transparent',
+              color: value === p.valor ? p.color : '#7f8c8d',
+              fontSize: '12px',
+              fontWeight: value === p.valor ? '700' : '400',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {p.valor} — {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PrioridadBadge({ value }) {
+  const p = PRIORIDAD_CONFIG.find(c => c.valor === value) || PRIORIDAD_CONFIG[0];
+  return (
+    <span style={{
+      padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700',
+      backgroundColor: p.bg, color: p.color, whiteSpace: 'nowrap',
+    }}>
+      {p.valor} {p.label}
+    </span>
+  );
+}
 
 const ESTATUS_CONFIG = {
   'Abierto':     { clase: 'warning', bg: '#fef5e7', color: '#f39c12' },
@@ -51,6 +103,12 @@ function TicketDetalle({ ticket, onClose }) {
           }}>
             {ticket.estatus}
           </span>
+        </div>
+
+        {/* Prioridad */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '11px', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Prioridad</div>
+          <PrioridadBadge value={ticket.prioridad || 0} />
         </div>
 
         {/* Detail grid */}
@@ -131,6 +189,7 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
   const [form, setForm] = useState({
     descripcion:       ticket.descripcion       || '',
     causa_falla:       ticket.causa_falla        || '',
+    prioridad:         ticket.prioridad          ?? 0,
     id_proveedor:      ticket.id_proveedor      || '',
     fecha_programada:  ticket.fecha_programada  ? ticket.fecha_programada.slice(0, 10) : '',
     costo:             ticket.costo             || '',
@@ -155,6 +214,7 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
         body: JSON.stringify({
           descripcion:      form.descripcion,
           causa_falla:      form.causa_falla      || null,
+          prioridad:        form.prioridad        ?? 0,
           id_proveedor:     form.id_proveedor     || null,
           fecha_programada: form.fecha_programada || null,
           costo:            form.costo            || 0,
@@ -214,6 +274,8 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
               placeholder="Ej. Sobrecalentamiento, cortocircuito, desgaste..."
             />
           </div>
+
+          <PrioridadSelector value={form.prioridad} onChange={val => setForm(prev => ({ ...prev, prioridad: val }))} />
 
           <div className="form-group">
             <label>Estatus</label>
@@ -343,6 +405,7 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCompletar, onCamb
                       {t.causa_falla && (
                         <p style={{ fontSize: '12px', color: '#e67e22', margin: '0 0 8px 0' }}>⚠ {t.causa_falla}</p>
                       )}
+                      <div style={{ marginBottom: '6px' }}><PrioridadBadge value={t.prioridad || 0} /></div>
                       <div style={{ fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>
                         {t.proveedores?.nombre || 'Resolución interna'} · {formatFecha(t.fecha_programada)} · {formatMoneda(t.costo)}
                       </div>
@@ -441,6 +504,8 @@ export default function Correctivo() {
   const [tickets, setTickets]         = useState([]);
   const [equipos, setEquipos]         = useState([]);
   const [proveedores, setProveedores] = useState([]);
+  const [laboratorios, setLaboratorios] = useState([]);
+  const [filtroLab, setFiltroLab]         = useState('');
   const [cargando, setCargando]       = useState(true);
   const [error, setError]             = useState(null);
   const [mensajeExito, setMensajeExito] = useState(null);
@@ -459,6 +524,7 @@ export default function Correctivo() {
     clave_activo: '',
     descripcion: '',
     causa_falla: '',
+    prioridad: 0,
     id_proveedor: '',
     fecha_programada: '',
     costo: '',
@@ -470,14 +536,16 @@ export default function Correctivo() {
     setCargando(true);
     setError(null);
     try {
-      const [dataTickets, dataEq, dataProv] = await Promise.all([
+      const [dataTickets, dataEq, dataProv, dataLabs] = await Promise.all([
         fetch(`${API_URL}/correctivo`).then(r => r.json()),
         equiposAPI.obtenerTodos(),
         proveedoresAPI.obtenerTodos(),
+        inventarioAPI.obtenerLaboratorios(),
       ]);
       setTickets(dataTickets);
       setEquipos(dataEq);
       setProveedores(dataProv);
+      setLaboratorios(dataLabs);
     } catch (err) {
       setError('No se pudo cargar la información. Verifica que el backend esté corriendo.');
     } finally {
@@ -491,7 +559,7 @@ export default function Correctivo() {
   }
 
   function abrirModal() {
-    setForm({ clave_activo: '', descripcion: '', causa_falla: '', id_proveedor: '', fecha_programada: '', costo: '' });
+    setForm({ clave_activo: '', descripcion: '', causa_falla: '', prioridad: 0, id_proveedor: '', fecha_programada: '', costo: '' });
     setError(null);
     setMostrarModal(true);
   }
@@ -508,6 +576,7 @@ export default function Correctivo() {
           clave_activo: form.clave_activo,
           descripcion: form.descripcion,
           causa_falla: form.causa_falla || null,
+          prioridad: form.prioridad || 0,
           id_proveedor: form.id_proveedor || null,
           fecha_programada: form.fecha_programada || null,
           costo: form.costo || 0,
@@ -567,7 +636,8 @@ export default function Correctivo() {
     const coincideBusqueda = busqueda === '' ||
       t.clave_activo?.toLowerCase().includes(busqueda.toLowerCase()) ||
       t.descripcion?.toLowerCase().includes(busqueda.toLowerCase());
-    return coincideEstatus && coincideClave && coincideBusqueda;
+    const coincideLab = filtroLab === '' || t.equipos?.id_laboratorio == filtroLab;
+    return coincideEstatus && coincideClave && coincideBusqueda && coincideLab;
   });
 
   const abiertos    = tickets.filter(t => t.estatus === 'Abierto').length;
@@ -617,9 +687,16 @@ export default function Correctivo() {
       </section>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="text" placeholder="Buscar por clave o descripción..." className="input-search"
           style={{ minWidth: '260px' }} value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+        <select className="select-filter" value={filtroLab} onChange={e => setFiltroLab(e.target.value)}>
+          <option value="">Todos los laboratorios</option>
+          {laboratorios.map(l => (
+            <option key={l.id_laboratorio} value={l.id_laboratorio}>{l.nombre}</option>
+          ))}
+        </select>
+
         <select className="select-filter" value={filtroEstatus} onChange={e => setFiltroEstatus(e.target.value)}>
           <option value="">Todos los estatus</option>
           <option value="Abierto">Abierto</option>
@@ -645,15 +722,16 @@ export default function Correctivo() {
               <th>Proveedor</th>
               <th>Fecha programada</th>
               <th>Costo</th>
+              <th>Prioridad</th>
               <th>Estatus</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan="8" style={{ textAlign: 'center', padding: '20px' }}>Procesando información...</td></tr>
+              <tr><td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>Procesando información...</td></tr>
             ) : filtrados.length === 0 ? (
-              <tr><td colSpan="8" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
+              <tr><td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
               filtrados.map(t => {
                 const estConf = ESTATUS_CONFIG[t.estatus] || ESTATUS_CONFIG['Abierto'];
@@ -671,6 +749,7 @@ export default function Correctivo() {
                     <td>{t.proveedores?.nombre || 'Resolución interna'}</td>
                     <td>{formatFecha(t.fecha_programada)}</td>
                     <td>{formatMoneda(t.costo)}</td>
+                    <td><PrioridadBadge value={t.prioridad || 0} /></td>
                     <td>
                       <span style={{
                         padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700',
@@ -760,6 +839,8 @@ export default function Correctivo() {
                   placeholder="Ej. Sobrecalentamiento, cortocircuito, desgaste..."
                 />
               </div>
+
+              <PrioridadSelector value={form.prioridad} onChange={val => setForm(prev => ({ ...prev, prioridad: val }))} />
 
               <div className="form-group">
                 <label>Proveedor asignado (opcional)</label>

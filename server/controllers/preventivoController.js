@@ -8,11 +8,7 @@ const supabase = require('../config/supabaseClient');
 async function obtenerPreventivos(req, res) {
   const { data, error } = await supabase
     .from('mantenimientos')
-    .select(`
-      *,
-      equipos ( marca, modelo, horas_acumuladas, limite_horas ),
-      proveedores ( nombre )
-    `)
+    .select('*, equipos ( marca, modelo, horas_acumuladas, limite_horas, id_laboratorio, laboratorios ( id_laboratorio, nombre ) ), proveedores ( nombre )')
     .eq('tipo_mantenimiento', 'Preventivo')
     .order('fecha_programada', { ascending: true, nullsFirst: false });
 
@@ -48,6 +44,9 @@ async function crearPreventivo(req, res) {
   const {
     clave_activo,
     descripcion,
+    descripcion_problema,
+    solucion_esperada,
+    prioridad,
     id_proveedor,
     fecha_programada,
     costo,
@@ -63,6 +62,9 @@ async function crearPreventivo(req, res) {
       clave_activo,
       tipo_mantenimiento: 'Preventivo',
       descripcion,
+      descripcion_problema: descripcion_problema || null,
+      solucion_esperada: solucion_esperada || null,
+      prioridad: prioridad || 0,
       id_proveedor: id_proveedor || null,
       fecha_programada: fecha_programada || null,
       costo: costo || 0,
