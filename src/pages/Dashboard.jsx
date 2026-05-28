@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, API_URL } from '../services/api';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-
-const API_URL = import.meta.env.VITE_API_URL;
 
 // ─── Mini calendar helpers ────────────────────────────────────────────────────
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];

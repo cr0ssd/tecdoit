@@ -1,12 +1,18 @@
-require('dotenv').config({ path: __dirname + '/.env' });
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
+const iniciarWorkerNotificaciones = require('./services/notificationWorker');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Iniciar el worker de notificaciones automáticas
+iniciarWorkerNotificaciones();
 
 const mantenimientoRoutes = require('./routes/mantenimientoRoutes');
 const proveedoresRoutes = require('./routes/proveedoresRoutes');

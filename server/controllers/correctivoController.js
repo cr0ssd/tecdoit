@@ -6,14 +6,24 @@ const supabase = require('../config/supabaseClient');
 
 // GET all correctivo tickets
 async function obtenerTickets(req, res) {
-  const { data, error } = await supabase
-    .from('mantenimientos')
-    .select(`*, equipos ( marca, modelo, id_laboratorio, laboratorios ( id_laboratorio, nombre ) ), proveedores ( nombre )`)
-    .eq('tipo_mantenimiento', 'Correctivo')
-    .order('fecha_reporte', { ascending: false });
+  console.log("==> Intentando obtener tickets correctivos...");
+  try {
+    const { data, error } = await supabase
+      .from('mantenimientos')
+      .select(`*, equipos ( marca, modelo, id_laboratorio, laboratorios ( id_laboratorio, nombre ) ), proveedores ( nombre )`)
+      .eq('tipo_mantenimiento', 'Correctivo')
+      .order('fecha_reporte', { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+    if (error) {
+      console.error("Error en obtenerTickets (Supabase):", error);
+      throw error;
+    }
+    console.log(`==> Éxito: ${data?.length || 0} tickets correctivos cargados.`);
+    res.json(data);
+  } catch (error) {
+    console.error("Error crítico en obtenerTickets:", error.message);
+    res.status(500).json({ error: error.message });
+  }
 }
 
 // GET correctivo records for a specific machine
@@ -46,31 +56,35 @@ async function crearTicket(req, res) {
     return res.status(400).json({ error: 'clave_activo y descripcion son requeridos.' });
   }
 
-  const { data, error } = await supabase
-    .from('mantenimientos')
-    .insert([{
-      clave_activo,
-      tipo_mantenimiento: 'Correctivo',
-      descripcion,
-      causa_falla: causa_falla || null,
-      prioridad: prioridad || 0,
-      id_proveedor: id_proveedor || null,
-      fecha_programada: fecha_programada || null,
-      costo: costo || 0,
-      estatus: 'Abierto',
-    }])
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('mantenimientos')
+      .insert([{
+        clave_activo,
+        tipo_mantenimiento: 'Correctivo',
+        descripcion,
+        causa_falla: causa_falla || null,
+        prioridad: prioridad || 0,
+        id_proveedor: id_proveedor || null,
+        fecha_programada: fecha_programada || null,
+        costo: costo || 0,
+        estatus: 'Abierto',
+      }])
+      .select();
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (error) throw error;
 
-  // Mark equipo as En Mantenimiento
-  await supabase
-    .from('equipos')
-    .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
-    .eq('clave_activo', clave_activo);
+    // Mark equipo as En Mantenimiento
+    await supabase
+      .from('equipos')
+      .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
+      .eq('clave_activo', clave_activo);
 
-  res.status(201).json(data);
+    return res.status(201).json(data && data.length > 0 ? data[0] : { mensaje: 'Ticket creado con éxito' });
+  } catch (error) {
+    console.error("Error en crearTicket:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
 }
 
 // PATCH update estatus only
@@ -83,15 +97,18 @@ async function actualizarEstatus(req, res) {
     return res.status(400).json({ error: 'Estatus no válido.' });
   }
 
-  const { data, error } = await supabase
-    .from('mantenimientos')
-    .update({ estatus })
-    .eq('id_mantenimiento', id)
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('mantenimientos')
+      .update({ estatus })
+      .eq('id_mantenimiento', id)
+      .select();
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+    if (error) throw error;
+    return res.json(data && data.length > 0 ? data[0] : { mensaje: 'Estatus actualizado' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 }
 
 // PATCH complete/close a correctivo ticket
@@ -99,23 +116,26 @@ async function completarTicket(req, res) {
   const { id } = req.params;
   const { clave_activo } = req.body;
 
-  const { data, error } = await supabase
-    .from('mantenimientos')
-    .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
-    .eq('id_mantenimiento', id)
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('mantenimientos')
+      .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
+      .eq('id_mantenimiento', id)
+      .select();
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (error) throw error;
 
-  if (clave_activo) {
-    await supabase
-      .from('equipos')
-      .update({ estatus: 'Activo' })
-      .eq('clave_activo', clave_activo);
+    if (clave_activo) {
+      await supabase
+        .from('equipos')
+        .update({ estatus: 'Activo' })
+        .eq('clave_activo', clave_activo);
+    }
+
+    return res.json(data && data.length > 0 ? data[0] : { mensaje: 'Cerrado con éxito' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
-
-  res.json(data);
 }
 
 // PATCH edit an active ticket's fields
@@ -128,23 +148,26 @@ async function editarTicket(req, res) {
     return res.status(400).json({ error: 'Solo se puede editar un ticket activo (Abierto o En progreso).' });
   }
 
-  const { data, error } = await supabase
-    .from('mantenimientos')
-    .update({
-      descripcion:      descripcion      ?? undefined,
-      causa_falla:      causa_falla !== undefined ? causa_falla : undefined,
-      prioridad:        prioridad !== undefined ? prioridad : undefined,
-      id_proveedor:     id_proveedor     ?? null,
-      fecha_programada: fecha_programada ?? null,
-      costo:            costo            ?? 0,
-      estatus:          estatus          ?? undefined,
-    })
-    .eq('id_mantenimiento', id)
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('mantenimientos')
+      .update({
+        descripcion:      descripcion      ?? undefined,
+        causa_falla:      causa_falla !== undefined ? causa_falla : undefined,
+        prioridad:        prioridad !== undefined ? prioridad : undefined,
+        id_proveedor:     id_proveedor     ?? null,
+        fecha_programada: fecha_programada ?? null,
+        costo:            costo            ?? 0,
+        estatus:          estatus          ?? undefined,
+      })
+      .eq('id_mantenimiento', id)
+      .select();
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+    if (error) throw error;
+    return res.json(data && data.length > 0 ? data[0] : { mensaje: 'Editado con éxito' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 }
 
 module.exports = {

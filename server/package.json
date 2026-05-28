@@ -10,9 +10,11 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@mailchimp/mailchimp_transactional": "^1.4.1",
     "@supabase/supabase-js": "^2.104.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1"
   }
 }

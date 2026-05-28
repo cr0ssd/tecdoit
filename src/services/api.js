@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export const mantenimientosAPI = {
   obtenerTodos: async () => {
@@ -24,6 +24,64 @@ export const mantenimientosAPI = {
       body: JSON.stringify({ clave_activo })
     });
     if (!response.ok) throw new Error('Error al completar mantenimiento');
+    return await response.json();
+  }
+};
+
+export const preventivoAPI = {
+  obtenerTodos: async () => {
+    const response = await fetch(`${API_URL}/preventivo`);
+    if (!response.ok) throw new Error('Error al obtener preventivos');
+    return await response.json();
+  },
+  crear: async (datos) => {
+    const response = await fetch(`${API_URL}/preventivo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Error al guardar preventivo');
+    }
+    return await response.json();
+  },
+  completar: async (id, clave_activo) => {
+    const response = await fetch(`${API_URL}/preventivo/${id}/completar`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave_activo })
+    });
+    if (!response.ok) throw new Error('Error al completar preventivo');
+    return await response.json();
+  }
+};
+
+export const correctivoAPI = {
+  obtenerTodos: async () => {
+    const response = await fetch(`${API_URL}/correctivo`);
+    if (!response.ok) throw new Error('Error al obtener correctivos');
+    return await response.json();
+  },
+  crear: async (datos) => {
+    const response = await fetch(`${API_URL}/correctivo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Error al guardar correctivo');
+    }
+    return await response.json();
+  },
+  completar: async (id, clave_activo) => {
+    const response = await fetch(`${API_URL}/correctivo/${id}/completar`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave_activo })
+    });
+    if (!response.ok) throw new Error('Error al completar correctivo');
     return await response.json();
   }
 };

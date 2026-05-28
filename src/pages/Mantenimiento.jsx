@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { mantenimientosAPI, proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
+import { mantenimientosAPI, proveedoresAPI, equiposAPI, inventarioAPI, API_URL } from '../services/api';
 
-const API_URL = import.meta.env.VITE_API_URL;
 
 // ── Shared prioridad components ───────────────────────────────────────────────
 const PRIORIDAD_CONFIG = [

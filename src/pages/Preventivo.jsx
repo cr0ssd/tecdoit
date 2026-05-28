@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { mantenimientosAPI, proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { preventivoAPI, proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
 
 const TIPOS_REQUERIMIENTO = [
   'Limpieza general',
@@ -11,6 +9,15 @@ const TIPOS_REQUERIMIENTO = [
   'Lubricación',
   'Actualización de firmware',
   'Otro',
+];
+
+const PRIORIDAD_CONFIG = [
+  { valor: 0, label: 'Sin definir', color: '#bdc3c7', bg: '#f4f6f7' },
+  { valor: 1, label: 'Muy baja',    color: '#27ae60', bg: '#eafaf1' },
+  { valor: 2, label: 'Baja',        color: '#2ecc71', bg: '#d5f5e3' },
+  { valor: 3, label: 'Media',       color: '#f39c12', bg: '#fef5e7' },
+  { valor: 4, label: 'Alta',        color: '#e67e22', bg: '#fdebd0' },
+  { valor: 5, label: 'Crítica',     color: '#e74c3c', bg: '#fadbd8' },
 ];
 
 function formatFecha(iso) {
@@ -39,46 +46,6 @@ function estadoBadge(dias) {
   return { clase: 'ok', texto: `En ${dias} días` };
 }
 
-
-const PRIORIDAD_CONFIG = [
-  { valor: 0, label: 'Sin definir', color: '#bdc3c7', bg: '#f4f6f7' },
-  { valor: 1, label: 'Muy baja',    color: '#27ae60', bg: '#eafaf1' },
-  { valor: 2, label: 'Baja',        color: '#2ecc71', bg: '#d5f5e3' },
-  { valor: 3, label: 'Media',       color: '#f39c12', bg: '#fef5e7' },
-  { valor: 4, label: 'Alta',        color: '#e67e22', bg: '#fdebd0' },
-  { valor: 5, label: 'Crítica',     color: '#e74c3c', bg: '#fadbd8' },
-];
-
-function PrioridadSelector({ value, onChange }) {
-  return (
-    <div className="form-group">
-      <label>Prioridad</label>
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
-        {PRIORIDAD_CONFIG.map(p => (
-          <button
-            key={p.valor}
-            type="button"
-            onClick={() => onChange(p.valor)}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '20px',
-              border: `2px solid ${value === p.valor ? p.color : '#ecf0f1'}`,
-              backgroundColor: value === p.valor ? p.bg : 'transparent',
-              color: value === p.valor ? p.color : '#7f8c8d',
-              fontSize: '12px',
-              fontWeight: value === p.valor ? '700' : '400',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {p.valor} — {p.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function PrioridadBadge({ value }) {
   const p = PRIORIDAD_CONFIG.find(c => c.valor === value) || PRIORIDAD_CONFIG[0];
   return (
@@ -91,34 +58,48 @@ function PrioridadBadge({ value }) {
   );
 }
 
+function PrioridadSelector({ value, onChange }) {
+  return (
+    <div className="form-group">
+      <label>Prioridad</label>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+        {PRIORIDAD_CONFIG.map(p => (
+          <button key={p.valor} type="button" onClick={() => onChange(p.valor)}
+            style={{
+              padding: '6px 12px', borderRadius: '20px', cursor: 'pointer',
+              border: `2px solid ${value === p.valor ? p.color : '#ecf0f1'}`,
+              backgroundColor: value === p.valor ? p.bg : 'transparent',
+              color: value === p.valor ? p.color : '#7f8c8d',
+              fontSize: '12px', fontWeight: value === p.valor ? '700' : '400',
+              transition: 'all 0.15s ease',
+            }}>
+            {p.valor} — {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Preventivo() {
   const [registros, setRegistros] = useState([]);
   const [equipos, setEquipos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [laboratorios, setLaboratorios] = useState([]);
-  const [filtroLab, setFiltroLab] = useState('');
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [mensajeExito, setMensajeExito] = useState(null);
-
   const [mostrarModal, setMostrarModal] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [paginaModal, setPaginaModal] = useState(1);
-
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('');
+  const [filtroLab, setFiltroLab] = useState('');
 
   const [form, setForm] = useState({
-    clave_activo: '',
-    descripcion: '',
-    tipo_requerimiento: '',
-    descripcion_custom: '',
-    descripcion_problema: '',
-    solucion_esperada: '',
-    prioridad: 0,
-    id_proveedor: '',
-    fecha_programada: '',
-    costo: '',
+    clave_activo: '', tipo_requerimiento: '', descripcion_custom: '',
+    descripcion_problema: '', solucion_esperada: '', prioridad: 0,
+    id_proveedor: '', fecha_programada: '', costo: '',
   });
 
   useEffect(() => { cargarDatos(); }, []);
@@ -127,74 +108,52 @@ export default function Preventivo() {
     setCargando(true);
     setError(null);
     try {
-      const [resPreventivo, dataEq, dataProv, dataLabs] = await Promise.all([
-        fetch(`${API_URL}/preventivo`).then(r => r.json()),
+      const [dataPrev, dataEq, dataProv, dataLabs] = await Promise.all([
+        preventivoAPI.obtenerTodos(),
         equiposAPI.obtenerTodos(),
         proveedoresAPI.obtenerTodos(),
         inventarioAPI.obtenerLaboratorios(),
       ]);
-      setRegistros(resPreventivo);
+      setRegistros(dataPrev);
       setEquipos(dataEq);
       setProveedores(dataProv);
       setLaboratorios(dataLabs);
     } catch (err) {
-      setError('No se pudo cargar la información. Verifica que el backend esté corriendo.');
+      console.error(err);
+      setError('No se pudo cargar la información. Verifica la conexión con el servidor.');
     } finally {
       setCargando(false);
     }
   }
 
-  function handleInput(e) {
+  const handleInput = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
-  }
+  };
 
-  function abrirModal() {
-    setForm({ clave_activo: '', descripcion: '', tipo_requerimiento: '', descripcion_custom: '', descripcion_problema: '', solucion_esperada: '', prioridad: 0, id_proveedor: '', fecha_programada: '', costo: '' });
-    setError(null);
+  const abrirModal = () => {
+    setForm({ clave_activo: '', tipo_requerimiento: '', descripcion_custom: '', descripcion_problema: '', solucion_esperada: '', prioridad: 0, id_proveedor: '', fecha_programada: '', costo: '' });
     setPaginaModal(1);
-    setMostrarModal(true);
-  }
-
-  function siguientePagina(e) {
-    e.preventDefault();
-    // Validate page 1 required fields before advancing
-    if (!form.clave_activo) { setError('Selecciona un equipo.'); return; }
-    if (!form.tipo_requerimiento) { setError('Selecciona un tipo de requerimiento.'); return; }
-    if (form.tipo_requerimiento === 'Otro' && !form.descripcion_custom) { setError('Describe el requerimiento personalizado.'); return; }
     setError(null);
-    setPaginaModal(2);
-  }
+    setMostrarModal(true);
+  };
 
-  async function guardar(e) {
+  const guardar = async (e) => {
     e.preventDefault();
     setGuardando(true);
     setError(null);
-
-    // Build descripcion: preset label or custom text
-    const descFinal = form.tipo_requerimiento === 'Otro'
-      ? form.descripcion_custom
-      : form.tipo_requerimiento;
-
+    const descFinal = form.tipo_requerimiento === 'Otro' ? form.descripcion_custom : form.tipo_requerimiento;
     try {
-      const res = await fetch(`${API_URL}/preventivo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clave_activo: form.clave_activo,
-          descripcion: descFinal,
-          descripcion_problema: form.descripcion_problema || null,
-          solucion_esperada: form.solucion_esperada || null,
-          prioridad: form.prioridad || 0,
-          id_proveedor: form.id_proveedor || null,
-          fecha_programada: form.fecha_programada || null,
-          costo: form.costo || 0,
-        }),
+      await preventivoAPI.crear({
+        clave_activo: form.clave_activo,
+        descripcion: descFinal,
+        descripcion_problema: form.descripcion_problema || null,
+        solucion_esperada: form.solucion_esperada || null,
+        prioridad: form.prioridad || 0,
+        id_proveedor: form.id_proveedor || null,
+        fecha_programada: form.fecha_programada || null,
+        costo: form.costo || 0,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Error al guardar');
-      }
       setMostrarModal(false);
       setMensajeExito('Mantenimiento preventivo registrado correctamente.');
       setTimeout(() => setMensajeExito(null), 3500);
@@ -204,310 +163,148 @@ export default function Preventivo() {
     } finally {
       setGuardando(false);
     }
-  }
+  };
 
-  async function completar(id_mantenimiento, clave_activo) {
+  const completar = async (id, clave_activo) => {
+    if (!window.confirm('¿Confirmas que este servicio ha sido finalizado?')) return;
     try {
-      const res = await fetch(`${API_URL}/preventivo/${id_mantenimiento}/completar`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clave_activo }),
-      });
-      if (!res.ok) throw new Error('Error al completar');
-      setMensajeExito('Mantenimiento marcado como completado.');
-      setTimeout(() => setMensajeExito(null), 3500);
+      await preventivoAPI.completar(id, clave_activo);
+      setMensajeExito('Mantenimiento completado correctamente.');
+      setTimeout(() => setMensajeExito(null), 3000);
       cargarDatos();
     } catch (err) {
-      setError(err.message);
+      alert(err.message);
     }
-  }
+  };
 
   const filtrados = registros.filter(r => {
-    const coincideTexto = busqueda === '' ||
-      r.clave_activo?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      r.descripcion?.toLowerCase().includes(busqueda.toLowerCase());
+    const texto = (busqueda || '').toLowerCase();
+    const coincideTexto = busqueda === '' || r.clave_activo?.toLowerCase().includes(texto) || r.descripcion?.toLowerCase().includes(texto);
     const coincideEstatus = filtroEstatus === '' || r.estatus === filtroEstatus;
     const coincideLab = filtroLab === '' || r.equipos?.id_laboratorio == filtroLab;
     return coincideTexto && coincideEstatus && coincideLab;
   });
 
-  // KPIs
-  const vencidos  = registros.filter(r => r.estatus !== 'Completado' && diasHasta(r.fecha_programada) < 0).length;
-  const proximos7 = registros.filter(r => r.estatus !== 'Completado' && diasHasta(r.fecha_programada) >= 0 && diasHasta(r.fecha_programada) <= 7).length;
-  const activos   = registros.filter(r => r.estatus !== 'Completado').length;
-
   return (
     <div className="dashboard-container">
       <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1>Mantenimiento Preventivo</h1>
-          <p>Programación y seguimiento de mantenimientos por intervalo</p>
-        </div>
+        <div><h1>Mantenimiento Preventivo</h1><p>Programación y seguimiento de servicios preventivos</p></div>
         <button className="btn-primary" onClick={abrirModal}>+ Registrar Preventivo</button>
       </header>
 
-      {error && !mostrarModal && (
-        <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>{error}</div>
-      )}
-      {mensajeExito && (
-        <div style={{ backgroundColor: '#eafaf1', color: '#27ae60', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>{mensajeExito}</div>
-      )}
+      {error && !mostrarModal && <div className="alert-error" style={{ marginBottom: '15px' }}>{error}</div>}
+      {mensajeExito && <div className="alert-success" style={{ marginBottom: '15px' }}>{mensajeExito}</div>}
 
-      {/* KPIs */}
-      <section className="kpi-grid">
-        <div className="kpi-card">
-          <h3>Preventivos Activos</h3>
-          <p className="kpi-number">{activos}</p>
-          <span className="kpi-status info">En curso o pendientes</span>
-        </div>
-        <div className="kpi-card">
-          <h3>Vencidos</h3>
-          <p className="kpi-number danger-text">{vencidos}</p>
-          <span className="kpi-status danger">Requieren atención inmediata</span>
-        </div>
-        <div className="kpi-card">
-          <h3>Próximos 7 días</h3>
-          <p className="kpi-number warning-text">{proximos7}</p>
-          <span className="kpi-status warning">Programar pronto</span>
-        </div>
-        <div className="kpi-card">
-          <h3>Completados</h3>
-          <p className="kpi-number" style={{ color: '#27ae60' }}>{registros.length - activos}</p>
-          <span className="kpi-status ok">Histórico total</span>
-        </div>
-      </section>
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input type="text" placeholder="Buscar por equipo o descripción..." className="input-search"
-          value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <input type="text" placeholder="Buscar por equipo o descripción..." className="input-search" value={busqueda} onChange={e => setBusqueda(e.target.value)} style={{ minWidth: '260px' }} />
         <select className="select-filter" value={filtroLab} onChange={e => setFiltroLab(e.target.value)}>
           <option value="">Todos los laboratorios</option>
-          {laboratorios.map(l => (
-            <option key={l.id_laboratorio} value={l.id_laboratorio}>{l.nombre}</option>
-          ))}
+          {laboratorios.map(l => <option key={l.id_laboratorio} value={l.id_laboratorio}>{l.nombre}</option>)}
         </select>
-
         <select className="select-filter" value={filtroEstatus} onChange={e => setFiltroEstatus(e.target.value)}>
           <option value="">Todos los estatus</option>
           <option value="Abierto">Abierto</option>
-          <option value="En progreso">En progreso</option>
           <option value="Completado">Completado</option>
         </select>
       </div>
 
-      {/* Table */}
       <section className="table-container">
         <table className="data-table">
           <thead>
             <tr>
               <th>Equipo</th>
-              <th>Requerimiento</th>
-              <th>Descripción / Solución esperada</th>
+              <th>Servicio / Detalle</th>
               <th>Proveedor</th>
               <th>Fecha Programada</th>
               <th>Costo</th>
               <th>Prioridad</th>
-              <th>Estatus / Días</th>
+              <th>Estatus</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>Procesando información...</td></tr>
+              <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px' }}>Sincronizando información...</td></tr>
             ) : filtrados.length === 0 ? (
-              <tr><td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
-            ) : (
-              filtrados.map(r => {
-                const dias = diasHasta(r.fecha_programada);
-                const badge = r.estatus === 'Completado'
-                  ? { clase: 'ok', texto: 'Completado' }
-                  : estadoBadge(dias);
-
-                return (
-                  <tr key={r.id_mantenimiento}>
-                    <td>
-                      <strong>{r.clave_activo}</strong><br />
-                      <small style={{ color: '#7f8c8d' }}>{r.equipos?.marca} {r.equipos?.modelo}</small>
-                    </td>
-                    <td>{r.descripcion || '—'}</td>
-                    <td style={{ maxWidth: '200px' }}>
-                      {r.descripcion_problema && (
-                        <div style={{ fontSize: '13px', color: '#2c3e50', marginBottom: r.solucion_esperada ? '4px' : '0' }}>
-                          {r.descripcion_problema}
-                        </div>
-                      )}
-                      {r.solucion_esperada && (
-                        <div style={{ fontSize: '12px', marginTop: '3px', padding: '3px 7px', backgroundColor: '#eafaf1', borderRadius: '4px', display: 'inline-block' }}>
-                          <span style={{ color: '#27ae60', fontWeight: '600' }}>✔ </span>
-                          <span style={{ color: '#27ae60' }}>{r.solucion_esperada}</span>
-                        </div>
-                      )}
-                      {!r.descripcion_problema && !r.solucion_esperada && <span style={{ color: '#bdc3c7' }}>—</span>}
-                    </td>
-                    <td>{r.proveedores?.nombre || 'Resolución interna'}</td>
-                    <td>{formatFecha(r.fecha_programada)}</td>
-                    <td>{formatMoneda(r.costo)}</td>
-                    <td><PrioridadBadge value={r.prioridad || 0} /></td>
-                    <td><span className={`badge ${badge.clase}`}>{badge.texto}</span></td>
-                    <td>
-                      {r.estatus !== 'Completado' && (
-                        <button
-                          className="btn-icon"
-                          style={{ borderColor: '#27ae60', color: '#27ae60' }}
-                          onClick={() => completar(r.id_mantenimiento, r.clave_activo)}
-                        >
-                          ✓ Completar
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+              <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px' }}>No se encontraron registros.</td></tr>
+            ) : filtrados.map(r => {
+              const dias = diasHasta(r.fecha_programada);
+              const badge = r.estatus === 'Completado' ? { clase: 'ok', texto: 'Completado' } : estadoBadge(dias);
+              return (
+                <tr key={r.id_mantenimiento}>
+                  <td><strong>{r.clave_activo}</strong><br/><small style={{ color: '#7f8c8d' }}>{r.equipos?.marca} {r.equipos?.modelo}</small></td>
+                  <td style={{ maxWidth: '200px' }}>
+                    <div style={{ fontWeight: '600' }}>{r.descripcion}</div>
+                    {r.descripcion_problema && <div style={{ fontSize: '11px', color: '#7f8c8d' }}>{r.descripcion_problema}</div>}
+                  </td>
+                  <td>{r.proveedores?.nombre || 'Interna'}</td>
+                  <td>{formatFecha(r.fecha_programada)}</td>
+                  <td><strong>{formatMoneda(r.costo)}</strong></td>
+                  <td><PrioridadBadge value={r.prioridad || 0} /></td>
+                  <td><span className={`badge ${badge.clase}`}>{badge.texto}</span></td>
+                  <td>
+                    {r.estatus !== 'Completado' && (
+                      <button className="btn-icon" onClick={() => completar(r.id_mantenimiento, r.clave_activo)} style={{ color: '#27ae60', borderColor: '#27ae60' }}>
+                        ✓ Completar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </section>
 
-      {/* Modal — 2 pages */}
       {mostrarModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '560px' }}>
+          <div className="modal-content" style={{ maxWidth: '520px' }}>
+            <h2 style={{ borderBottom: '1px solid #eee', paddingBottom: '12px', marginBottom: '20px' }}>Nuevo Registro Preventivo</h2>
+            
+            {error && <div className="alert-error" style={{ marginBottom: '15px' }}>{error}</div>}
 
-            {/* Modal header */}
-            <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '18px', color: '#2c3e50', marginBottom: '8px' }}>
-                Registrar Mantenimiento Preventivo
-              </h2>
-              {/* Step indicator */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {[1, 2].map(step => (
-                  <div key={step} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{
-                      width: '24px', height: '24px', borderRadius: '50%',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '11px', fontWeight: '700',
-                      backgroundColor: paginaModal >= step ? '#3498db' : '#ecf0f1',
-                      color: paginaModal >= step ? 'white' : '#7f8c8d',
-                    }}>
-                      {step}
-                    </div>
-                    <span style={{ fontSize: '12px', color: paginaModal >= step ? '#2c3e50' : '#bdc3c7', fontWeight: paginaModal === step ? '600' : '400' }}>
-                      {step === 1 ? 'Identificación' : 'Detalles y configuración'}
-                    </span>
-                    {step < 2 && (
-                      <div style={{ width: '24px', height: '2px', backgroundColor: paginaModal > step ? '#3498db' : '#ecf0f1', marginLeft: '2px' }} />
-                    )}
-                  </div>
-                ))}
+            <form onSubmit={guardar}>
+              <div className="form-group">
+                <label>Equipo</label>
+                <select name="clave_activo" value={form.clave_activo} onChange={handleInput} required>
+                  <option value="">-- Seleccionar equipo --</option>
+                  {equipos.map(eq => <option key={eq.clave_activo} value={eq.clave_activo}>{eq.clave_activo} — {eq.marca} {eq.modelo}</option>)}
+                </select>
               </div>
-            </div>
 
-            {error && (
-              <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>{error}</div>
-            )}
+              <div className="form-group">
+                <label>Tipo de requerimiento</label>
+                <select name="tipo_requerimiento" value={form.tipo_requerimiento} onChange={handleInput} required>
+                  <option value="">-- Seleccionar --</option>
+                  {TIPOS_REQUERIMIENTO.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
 
-            {/* ── Page 1: Identification ── */}
-            {paginaModal === 1 && (
-              <form onSubmit={siguientePagina}>
+              {form.tipo_requerimiento === 'Otro' && (
                 <div className="form-group">
-                  <label>Equipo</label>
-                  <select name="clave_activo" value={form.clave_activo} onChange={handleInput} required>
-                    <option value="">-- Seleccionar equipo --</option>
-                    {equipos.map(eq => (
-                      <option key={eq.clave_activo} value={eq.clave_activo}>
-                        {eq.clave_activo} — {eq.marca} {eq.modelo}
-                      </option>
-                    ))}
-                  </select>
+                  <label>Descripción personalizada</label>
+                  <input type="text" name="descripcion_custom" value={form.descripcion_custom} onChange={handleInput} placeholder="Especifique..." required />
                 </div>
+              )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div className="form-group">
-                    <label>Tipo de requerimiento</label>
-                    <select name="tipo_requerimiento" value={form.tipo_requerimiento} onChange={handleInput} required>
-                      <option value="">-- Seleccionar --</option>
-                      {TIPOS_REQUERIMIENTO.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  {form.tipo_requerimiento === 'Otro' && (
-                    <div className="form-group">
-                      <label>Descripción personalizada</label>
-                      <input type="text" name="descripcion_custom" value={form.descripcion_custom}
-                        onChange={handleInput} placeholder="Describe el motivo..." required />
-                    </div>
-                  )}
-                </div>
+              <PrioridadSelector value={form.prioridad} onChange={val => setForm(p => ({...p, prioridad: val}))} />
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 <div className="form-group">
-                  <label>Descripción del problema <span style={{ fontWeight: 'normal', color: '#bdc3c7' }}>(opcional)</span></label>
-                  <textarea
-                    name="descripcion_problema"
-                    value={form.descripcion_problema}
-                    onChange={handleInput}
-                    rows={3}
-                    placeholder="Detalla el problema observado o síntomas del equipo..."
-                    style={{ padding: '10px', border: '1px solid #bdc3c7', borderRadius: '6px', fontSize: '14px', resize: 'vertical', width: '100%' }}
-                  />
+                  <label>Fecha programada</label>
+                  <input type="date" name="fecha_programada" value={form.fecha_programada} onChange={handleInput} required />
                 </div>
-
                 <div className="form-group">
-                  <label>Solución esperada <span style={{ fontWeight: 'normal', color: '#bdc3c7' }}>(opcional)</span></label>
-                  <textarea
-                    name="solucion_esperada"
-                    value={form.solucion_esperada}
-                    onChange={handleInput}
-                    rows={3}
-                    placeholder="Describe el procedimiento o solución anticipada..."
-                    style={{ padding: '10px', border: '1px solid #bdc3c7', borderRadius: '6px', fontSize: '14px', resize: 'vertical', width: '100%' }}
-                  />
+                  <label>Costo estimado</label>
+                  <input type="number" name="costo" value={form.costo} onChange={handleInput} placeholder="0.00" step="0.01" />
                 </div>
+              </div>
 
-                <div className="modal-actions">
-                  <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)}>Cancelar</button>
-                  <button type="submit" className="btn-primary">Siguiente →</button>
-                </div>
-              </form>
-            )}
-
-            {/* ── Page 2: Details & config ── */}
-            {paginaModal === 2 && (
-              <form onSubmit={guardar}>
-                <PrioridadSelector value={form.prioridad} onChange={val => setForm(prev => ({ ...prev, prioridad: val }))} />
-
-                <div className="form-group">
-                  <label>Proveedor asignado (opcional)</label>
-                  <select name="id_proveedor" value={form.id_proveedor} onChange={handleInput}>
-                    <option value="">Resolución interna</option>
-                    {proveedores.map(p => (
-                      <option key={p.id_proveedor} value={p.id_proveedor}>
-                        {p.nombre}{p.es_preferido ? ' ⭐' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div className="form-group">
-                    <label>Fecha programada</label>
-                    <input type="date" name="fecha_programada" value={form.fecha_programada} onChange={handleInput} required />
-                  </div>
-                  <div className="form-group">
-                    <label>Costo estimado ($)</label>
-                    <input type="number" step="0.01" name="costo" value={form.costo}
-                      onChange={handleInput} placeholder="0.00" min="0" />
-                  </div>
-                </div>
-
-                <div className="modal-actions">
-                  <button type="button" className="btn-secondary" onClick={() => { setError(null); setPaginaModal(1); }} disabled={guardando}>← Regresar</button>
-                  <button type="submit" className="btn-primary" disabled={guardando}>
-                    {guardando ? 'Procesando...' : 'Confirmar Registro'}
-                  </button>
-                </div>
-              </form>
-            )}
-
+              <div className="modal-actions" style={{ borderTop: '1px solid #eee', paddingTop: '15px', marginTop: '20px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={guardando}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar Mantenimiento'}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

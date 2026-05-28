@@ -2,15 +2,21 @@ const supabase = require('../config/supabaseClient');
 
 // Obtener todos los mantenimientos
 const obtenerMantenimientos = async (req, res) => {
+  console.log("==> Intentando obtener mantenimientos...");
   try {
     const { data, error } = await supabase
       .from('mantenimientos')
       .select('*, equipos(marca, modelo, id_laboratorio, laboratorios(id_laboratorio, nombre)), proveedores(nombre)')
       .order('fecha_programada', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Error en obtenerMantenimientos (Supabase):", error);
+      throw error;
+    }
+    console.log(`==> Éxito: ${data?.length || 0} mantenimientos cargados.`);
     res.status(200).json(data);
   } catch (error) {
+    console.error("Error crítico en obtenerMantenimientos:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
@@ -30,7 +36,7 @@ const crearMantenimiento = async (req, res) => {
     const costoProcesado = costo_estimado ? parseFloat(costo_estimado) : 0;
 
     // 1. Insertar el registro de mantenimiento
-    const { error: errorInsert } = await supabase
+    const { data, error: errorInsert } = await supabase
       .from('mantenimientos')
       .insert([{
         clave_activo,
@@ -40,7 +46,8 @@ const crearMantenimiento = async (req, res) => {
         fecha_programada,
         costo: costoProcesado,
         estatus: 'Abierto'
-      }]);
+      }])
+      .select();
 
     if (errorInsert) throw errorInsert;
 
@@ -54,11 +61,14 @@ const crearMantenimiento = async (req, res) => {
       })
       .eq('clave_activo', clave_activo);
 
-    if (errorUpdate) throw errorUpdate;
+    if (errorUpdate) {
+      console.warn("Mantenimiento creado pero falló actualizar equipo:", errorUpdate.message);
+    }
 
-    res.status(201).json({ mensaje: 'Servicio registrado y estatus de equipo actualizado.' });
+    return res.status(201).json(data && data.length > 0 ? data[0] : { mensaje: 'Servicio registrado correctamente.' });
   } catch (error) {
-    res.status(500).json({ error: 'Error al procesar el registro: ' + error.message });
+    console.error("Error en crearMantenimiento:", error.message);
+    return res.status(500).json({ error: 'Error al procesar el registro: ' + error.message });
   }
 };
 
@@ -69,27 +79,31 @@ const completarMantenimiento = async (req, res) => {
 
   try {
     // 1. Marcar el ticket como completado
-    const { error: errMant } = await supabase
+    const { data, error: errMant } = await supabase
       .from('mantenimientos')
       .update({
         estatus: 'Completado',
         fecha_cierre: new Date().toISOString()
       })
-      .eq('id_mantenimiento', id);
+      .eq('id_mantenimiento', id)
+      .select();
 
     if (errMant) throw errMant;
 
     // 2. Reactivar el equipo
-    const { error: errEq } = await supabase
-      .from('equipos')
-      .update({ estatus: 'Activo' })
-      .eq('clave_activo', clave_activo);
+    if (clave_activo) {
+      const { error: errEq } = await supabase
+        .from('equipos')
+        .update({ estatus: 'Activo' })
+        .eq('clave_activo', clave_activo);
 
-    if (errEq) throw errEq;
+      if (errEq) console.warn("Mantenimiento cerrado pero falló activar equipo:", errEq.message);
+    }
 
-    res.status(200).json({ mensaje: 'Servicio completado y equipo reactivado.' });
+    return res.status(200).json(data && data.length > 0 ? data[0] : { mensaje: 'Servicio completado.' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Error en completarMantenimiento:", error.message);
+    return res.status(500).json({ error: error.message });
   }
 };
 
