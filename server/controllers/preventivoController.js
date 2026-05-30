@@ -118,7 +118,7 @@ async function completarPreventivoLegacy(req, res) {
 async function obtenerConfigs(req, res) {
   const { data, error } = await supabase
     .from('preventivo')
-    .select('*, equipos ( marca, modelo, horas_acumuladas )')
+    .select('*, equipos ( marca, modelo, horas_acumuladas ), proveedores ( id_proveedor, nombre )')
     .order('proxima_fecha', { ascending: true, nullsFirst: false });
 
   if (error) return res.status(500).json({ error: error.message });
@@ -133,7 +133,7 @@ async function crearConfig(req, res) {
     clave_activo,
     intervalo_dias,
     proxima_fecha,
-    proveedor,
+    id_proveedor,
     responsable,
     tareas,
   } = req.body;
@@ -148,7 +148,7 @@ async function crearConfig(req, res) {
       clave_activo,
       intervalo_dias:  Number(intervalo_dias),
       proxima_fecha:   proxima_fecha  || null,
-      proveedor:       proveedor      || null,
+      id_proveedor:    id_proveedor   || null,
       responsable:     responsable    || null,
       tareas:          tareas         || [],
     }])
@@ -167,7 +167,7 @@ async function actualizarConfig(req, res) {
   const {
     intervalo_dias,
     proxima_fecha,
-    proveedor,
+    id_proveedor,
     responsable,
     tareas,
   } = req.body;
@@ -175,7 +175,7 @@ async function actualizarConfig(req, res) {
   const updates = {};
   if (intervalo_dias !== undefined) updates.intervalo_dias = Number(intervalo_dias);
   if (proxima_fecha  !== undefined) updates.proxima_fecha  = proxima_fecha;
-  if (proveedor      !== undefined) updates.proveedor      = proveedor;
+  if (id_proveedor   !== undefined) updates.id_proveedor   = id_proveedor;
   if (responsable    !== undefined) updates.responsable    = responsable;
   if (tareas         !== undefined) updates.tareas         = tareas;
 
