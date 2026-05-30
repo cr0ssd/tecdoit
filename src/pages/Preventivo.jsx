@@ -1,21 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-// Periodicidad options — replaces old intervalo/tabs system
 const PERIODICIDADES = [
-  { value: '7',   label: '7 Días',   dias: 7   },
-  { value: '15',  label: '15 Días',  dias: 15  },
-  { value: '30',  label: '1 Mes',    dias: 30  },
-  { value: '60',  label: '2 Meses',  dias: 60  },
-  { value: '90',  label: '3 Meses',  dias: 90  },
-  { value: '120', label: '4 Meses',  dias: 120 },
-  { value: '150', label: '5 Meses',  dias: 150 },
-  { value: '180', label: '6 Meses',  dias: 180 },
-  { value: 'otro', label: 'Otro',    dias: null },
+  { value: '7',    label: '7 Días',   dias: 7   },
+  { value: '15',   label: '15 Días',  dias: 15  },
+  { value: '30',   label: '1 Mes',    dias: 30  },
+  { value: '60',   label: '2 Meses',  dias: 60  },
+  { value: '90',   label: '3 Meses',  dias: 90  },
+  { value: '120',  label: '4 Meses',  dias: 120 },
+  { value: '150',  label: '5 Meses',  dias: 150 },
+  { value: '180',  label: '6 Meses',  dias: 180 },
+  { value: 'otro', label: 'Otro',     dias: null },
 ];
 
-// --- Helpers ---
+// ── Helpers ───────────────────────────────────────────────────────
 
 function diasHasta(fecha) {
   if (!fecha) return null;
@@ -26,91 +25,213 @@ function diasHasta(fecha) {
   return Math.ceil((target - hoy) / (1000 * 60 * 60 * 24));
 }
 
-// Returns { clase, texto, esVencido, esEnMantenimiento }
+// En Mantenimiento and Vencido are parallel states:
+//   - en_mantenimiento=true, dias=0  → En Mantenimiento only
+//   - en_mantenimiento=true, dias<0  → En Mantenimiento + Vencido
+// Returns { esEnMantenimiento, esVencido, diasVencido }
 function calcularEstado(config) {
-  // "En Mantenimiento" flag set by backend when maintenance window is active
-  if (config.en_mantenimiento) {
-    return { clase: 'warning', texto: 'En Mantenimiento', esEnMantenimiento: true, esVencido: false };
-  }
-
   const dias = diasHasta(config.proxima_fecha);
-
-  if (dias === null) {
-    return { clase: 'ok', texto: 'Sin fecha', esVencido: false, esEnMantenimiento: false };
-  }
-  if (dias < 0) {
-    return {
-      clase: 'danger',
-      texto: `Vencido hace ${Math.abs(dias)} día${Math.abs(dias) !== 1 ? 's' : ''}`,
-      esVencido: true,
-      esEnMantenimiento: false,
-    };
-  }
-  if (dias === 0) {
-    return { clase: 'danger', texto: 'Vence hoy', esVencido: false, esEnMantenimiento: false };
-  }
-  if (dias <= 7) {
-    return { clase: 'warning', texto: `En ${dias} días`, esVencido: false, esEnMantenimiento: false };
-  }
-  return { clase: 'ok', texto: `En ${dias} días`, esVencido: false, esEnMantenimiento: false };
+  const esEnMantenimiento = !!config.en_mantenimiento;
+  const esVencido = esEnMantenimiento && dias !== null && dias < 0;
+  const diasVencido = esVencido ? Math.abs(dias) : 0;
+  return { esEnMantenimiento, esVencido, diasVencido, dias };
 }
 
-function addDays(dateStr, days) {
-  const d = dateStr ? new Date(dateStr) : new Date();
+function addDays(days) {
+  const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-// ============================================================
+// ── Searchable equipo picker ──────────────────────────────────────
+// Shows a text input; typing filters a dropdown list below it.
+// Selecting an option fills the hidden value.
+function EquipoPicker({ equipos, value, onChange, disabled }) {
+  const [query, setQuery]   = useState('');
+  const [open,  setOpen]    = useState(false);
+  const ref                 = useRef(null);
+
+  // Sync display label when value changes externally (edit mode)
+  useEffect(() => {
+    if (value) {
+      const eq = equipos.find(e => e.clave_activo === value);
+      if (eq) setQuery(`${eq.clave_activo} — ${eq.marca} ${eq.modelo}`);
+    } else {
+      setQuery('');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const filtrados = equipos.filter(eq => {
+    const q = query.toLowerCase();
+    return (
+      eq.clave_activo.toLowerCase().includes(q) ||
+      (eq.marca  || '').toLowerCase().includes(q) ||
+      (eq.modelo || '').toLowerCase().includes(q)
+    );
+  });
+
+  function seleccionar(eq) {
+    onChange(eq.clave_activo);
+    setQuery(`${eq.clave_activo} — ${eq.marca} ${eq.modelo}`);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        type="text"
+        value={query}
+        onChange={e => { setQuery(e.target.value); onChange(''); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Buscar por clave, marca o modelo..."
+        disabled={disabled}
+        required
+        style={{
+          width: '100%', padding: '10px', border: '1px solid #bdc3c7',
+          borderRadius: '6px', fontSize: '14px', outline: 'none',
+          backgroundColor: disabled ? '#f4f7f6' : 'white',
+          cursor: disabled ? 'not-allowed' : 'text',
+        }}
+        onFocus={e => { if (!disabled) { e.target.style.borderColor = '#3498db'; setOpen(true); } }}
+        onBlur={e => e.target.style.borderColor = '#bdc3c7'}
+      />
+      {open && !disabled && filtrados.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+          backgroundColor: 'white', border: '1px solid #bdc3c7', borderTop: 'none',
+          borderRadius: '0 0 6px 6px', maxHeight: '200px', overflowY: 'auto',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+        }}>
+          {filtrados.map(eq => (
+            <div
+              key={eq.clave_activo}
+              onMouseDown={() => seleccionar(eq)}
+              style={{
+                padding: '9px 12px', cursor: 'pointer', fontSize: '13px',
+                borderBottom: '1px solid #f0f0f0',
+                backgroundColor: eq.clave_activo === value ? '#e8f4fd' : 'white',
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f4f7f6'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = eq.clave_activo === value ? '#e8f4fd' : 'white'}
+            >
+              <strong>{eq.clave_activo}</strong>
+              <span style={{ color: '#7f8c8d', marginLeft: '8px' }}>{eq.marca} {eq.modelo}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {open && !disabled && filtrados.length === 0 && query.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+          backgroundColor: 'white', border: '1px solid #bdc3c7', borderTop: 'none',
+          borderRadius: '0 0 6px 6px', padding: '10px 12px',
+          fontSize: '13px', color: '#7f8c8d',
+        }}>
+          Sin resultados para "{query}"
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Estado badges — renders 1 or 2 badges side by side ───────────
+function EstadoBadges({ config }) {
+  const { esEnMantenimiento, esVencido, diasVencido, dias } = calcularEstado(config);
+
+  if (esEnMantenimiento && esVencido) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <span className="badge warning">En Mantenimiento</span>
+        <span className="badge danger">Vencido hace {diasVencido} día{diasVencido !== 1 ? 's' : ''}</span>
+      </div>
+    );
+  }
+  if (esEnMantenimiento) {
+    return <span className="badge warning">En Mantenimiento</span>;
+  }
+  if (dias === null) {
+    return <span className="badge ok">Sin fecha</span>;
+  }
+  if (dias === 0) {
+    return <span className="badge warning">Vence hoy</span>;
+  }
+  if (dias < 0) {
+    // Shouldn't happen without en_mantenimiento but defensive fallback
+    return <span className="badge danger">Vencido hace {Math.abs(dias)} días</span>;
+  }
+  if (dias <= 7) {
+    return <span className="badge warning">En {dias} días</span>;
+  }
+  return <span className="badge ok">En {dias} días</span>;
+}
+
+// ─────────────────────────────────────────────────────────────────
+
 export default function Preventivo() {
-  const [equipos,       setEquipos]       = useState([]);
-  const [configs,       setConfigs]       = useState([]);
-  const [cargando,      setCargando]      = useState(true);
-  const [error,         setError]         = useState(null);
-  const [mensajeExito,  setMensajeExito]  = useState(null);
+  const [equipos,      setEquipos]      = useState([]);
+  const [proveedores,  setProveedores]  = useState([]);
+  const [configs,      setConfigs]      = useState([]);
+  const [cargando,     setCargando]     = useState(true);
+  const [error,        setError]        = useState(null);
+  const [mensajeExito, setMensajeExito] = useState(null);
 
-  // --- Registro/Edición modal ---
-  const [mostrarModal,  setMostrarModal]  = useState(false);
-  const [guardando,     setGuardando]     = useState(false);
-  const [modoEdicion,   setModoEdicion]   = useState(false);
+  // Registro / edición modal
+  const [mostrarModal, setMostrarModal] = useState(false);
+  const [guardando,    setGuardando]    = useState(false);
+  const [modoEdicion,  setModoEdicion]  = useState(false);
 
-  // --- Completar mantenimiento modal ---
+  // Completar modal
   const [mostrarCompletarModal, setMostrarCompletarModal] = useState(false);
   const [configCompletando,     setConfigCompletando]     = useState(null);
-  const [tareasCompletando,     setTareasCompletando]     = useState([]); // { texto, estado: 'pendiente'|'completado'|'no_necesario' }
+  const [tareasCompletando,     setTareasCompletando]     = useState([]);
   const [finalizando,           setFinalizando]           = useState(false);
 
-  // --- Filters ---
-  const [busqueda,    setBusqueda]    = useState('');
+  // Filters
+  const [busqueda,     setBusqueda]     = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
 
-  // --- Form state ---
+  // Form
   const [form, setForm] = useState({
-    clave_activo:     '',
-    periodicidad:     '',
+    clave_activo:      '',
+    periodicidad:      '',
     periodicidad_dias: '',
-    proveedor:        '',
-    responsable:      '',
-    tareas:           [], // [{ id, texto }]
+    id_proveedor:      '',
+    responsable:       '',
+    tareas:            [],
   });
 
   useEffect(() => { cargarDatos(); }, []);
 
-  // ── Data ──────────────────────────────────────────────────
+  // ── Data ────────────────────────────────────────────────────────
 
   async function cargarDatos() {
     setCargando(true);
     setError(null);
     try {
-      const [resEq, resConf] = await Promise.all([
+      const [resEq, resConf, resProv] = await Promise.all([
         fetch(`${API_URL}/equipos`),
         fetch(`${API_URL}/preventivo`),
+        fetch(`${API_URL}/proveedores`),
       ]);
       if (!resEq.ok)   throw new Error('Error al cargar equipos');
       if (!resConf.ok) throw new Error('Error al cargar configuraciones');
-      const [dataEq, dataConf] = await Promise.all([resEq.json(), resConf.json()]);
+      if (!resProv.ok) throw new Error('Error al cargar proveedores');
+      const [dataEq, dataConf, dataProv] = await Promise.all([
+        resEq.json(), resConf.json(), resProv.json(),
+      ]);
       setEquipos(dataEq);
       setConfigs(dataConf);
+      setProveedores(dataProv);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -118,14 +239,50 @@ export default function Preventivo() {
     }
   }
 
-  // ── Registro / Edición ────────────────────────────────────
+  // ── Computed ─────────────────────────────────────────────────────
+
+  // Equipos that already have a preventivo config — excluded from the picker
+  const clavesConConfig = new Set(configs.map(c => c.clave_activo));
+
+  // In edit mode the current equipo is allowed through (it already has the config)
+  const equiposDisponibles = equipos.filter(eq =>
+    !clavesConConfig.has(eq.clave_activo) || eq.clave_activo === form.clave_activo
+  );
+
+  const configsFiltradas = configs.filter(c => {
+    const coincideBusqueda = busqueda === '' ||
+      c.clave_activo.toLowerCase().includes(busqueda.toLowerCase());
+    if (!coincideBusqueda) return false;
+    if (filtroEstado === '') return true;
+    const { esEnMantenimiento, esVencido, dias } = calcularEstado(c);
+    if (filtroEstado === 'vencido')       return esVencido;
+    if (filtroEstado === 'mantenimiento') return esEnMantenimiento && !esVencido;
+    if (filtroEstado === 'ambos')         return esEnMantenimiento && esVencido;
+    if (filtroEstado === 'proximo')       return !esEnMantenimiento && dias !== null && dias >= 0 && dias <= 7;
+    if (filtroEstado === 'ok')            return !esEnMantenimiento && dias !== null && dias > 7;
+    return true;
+  });
+
+  const kpiVencidos      = configs.filter(c => calcularEstado(c).esVencido).length;
+  const kpiMantenimiento = configs.filter(c => {
+    const e = calcularEstado(c);
+    return e.esEnMantenimiento && !e.esVencido;
+  }).length;
+  const kpiProximos7 = configs.filter(c => {
+    const { esEnMantenimiento, dias } = calcularEstado(c);
+    return !esEnMantenimiento && dias !== null && dias >= 0 && dias <= 7;
+  }).length;
+
+  const labelPeriodicidad = (config) => {
+    const p = PERIODICIDADES.find(p => p.dias === config.intervalo_dias);
+    return p ? p.label : `${config.intervalo_dias} días`;
+  };
+
+  // ── Registro / Edición ───────────────────────────────────────────
 
   function abrirModalNuevo() {
     setModoEdicion(false);
-    setForm({
-      clave_activo: '', periodicidad: '', periodicidad_dias: '',
-      proveedor: '', responsable: '', tareas: [],
-    });
+    setForm({ clave_activo: '', periodicidad: '', periodicidad_dias: '', id_proveedor: '', responsable: '', tareas: [] });
     setError(null);
     setMostrarModal(true);
   }
@@ -137,9 +294,12 @@ export default function Preventivo() {
       clave_activo:      config.clave_activo,
       periodicidad:      periValue,
       periodicidad_dias: config.intervalo_dias || '',
-      proveedor:         config.proveedor || '',
+      id_proveedor:      config.id_proveedor || '',
       responsable:       config.responsable || '',
-      tareas:            (config.tareas || []).map((t, i) => ({ id: Date.now() + i, texto: typeof t === 'string' ? t : t.texto })),
+      tareas: (config.tareas || []).map((t, i) => ({
+        id: Date.now() + i,
+        texto: typeof t === 'string' ? t : t.texto,
+      })),
     });
     setError(null);
     setMostrarModal(true);
@@ -150,32 +310,28 @@ export default function Preventivo() {
     setForm(prev => ({ ...prev, [name]: value }));
   }
 
-  // Tareas management
   function agregarTarea() {
-    setForm(prev => ({
-      ...prev,
-      tareas: [...prev.tareas, { id: Date.now(), texto: '' }],
-    }));
+    setForm(prev => ({ ...prev, tareas: [...prev.tareas, { id: Date.now(), texto: '' }] }));
   }
 
   function actualizarTarea(id, texto) {
-    setForm(prev => ({
-      ...prev,
-      tareas: prev.tareas.map(t => t.id === id ? { ...t, texto } : t),
-    }));
+    setForm(prev => ({ ...prev, tareas: prev.tareas.map(t => t.id === id ? { ...t, texto } : t) }));
   }
 
   function eliminarTarea(id) {
-    setForm(prev => ({
-      ...prev,
-      tareas: prev.tareas.filter(t => t.id !== id),
-    }));
+    setForm(prev => ({ ...prev, tareas: prev.tareas.filter(t => t.id !== id) }));
   }
 
   async function guardar(e) {
     e.preventDefault();
     setGuardando(true);
     setError(null);
+
+    if (!form.clave_activo) {
+      setError('Selecciona un equipo de la lista.');
+      setGuardando(false);
+      return;
+    }
 
     const periObjeto = PERIODICIDADES.find(p => p.value === form.periodicidad);
     const diasCalculados = form.periodicidad === 'otro'
@@ -188,29 +344,22 @@ export default function Preventivo() {
       return;
     }
 
-    // proxima_fecha = today + diasCalculados
-    const proxima_fecha = addDays(null, diasCalculados);
-
-    const tareasLimpias = form.tareas
-      .map(t => t.texto.trim())
-      .filter(Boolean);
-
     const payload = {
       clave_activo:   form.clave_activo,
       intervalo_dias: diasCalculados,
-      proxima_fecha,
-      proveedor:      form.proveedor,
-      responsable:    form.responsable,
-      tareas:         tareasLimpias,
+      proxima_fecha:  addDays(diasCalculados),
+      id_proveedor:   form.id_proveedor || null,
+      responsable:    form.responsable  || null,
+      tareas:         form.tareas.map(t => t.texto.trim()).filter(Boolean),
     };
 
     try {
       const url    = modoEdicion ? `${API_URL}/preventivo/${form.clave_activo}` : `${API_URL}/preventivo`;
       const method = modoEdicion ? 'PUT' : 'POST';
-      const res    = await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -240,17 +389,17 @@ export default function Preventivo() {
     }
   }
 
-  // ── Completar mantenimiento ───────────────────────────────
+  // ── Completar mantenimiento ──────────────────────────────────────
 
   function abrirCompletarModal(config) {
     setConfigCompletando(config);
-    // Initialize each tarea with estado 'pendiente'
-    const tareas = (config.tareas || []).map((t, i) => ({
-      id:     i,
-      texto:  typeof t === 'string' ? t : t.texto,
-      estado: 'pendiente', // 'pendiente' | 'completado' | 'no_necesario'
-    }));
-    setTareasCompletando(tareas);
+    setTareasCompletando(
+      (config.tareas || []).map((t, i) => ({
+        id: i,
+        texto: typeof t === 'string' ? t : t.texto,
+        estado: 'pendiente',
+      }))
+    );
     setError(null);
     setMostrarCompletarModal(true);
   }
@@ -265,31 +414,30 @@ export default function Preventivo() {
     setTareasCompletando(prev => prev.map(t => ({ ...t, estado: 'completado' })));
   }
 
-  const todasResueltas = tareasCompletando.every(t => t.estado === 'completado' || t.estado === 'no_necesario');
+  const todasResueltas = tareasCompletando.every(
+    t => t.estado === 'completado' || t.estado === 'no_necesario'
+  );
 
   async function finalizarMantenimiento() {
     if (!todasResueltas && tareasCompletando.length > 0) {
-      setError('Debes marcar todas las tareas como Completado o No Necesario antes de finalizar.');
+      setError('Marca todas las tareas como Completado o No Necesario antes de finalizar.');
       return;
     }
     setFinalizando(true);
     setError(null);
 
-    // Calculate next proxima_fecha from today + intervalo_dias
-    const nuevaProxima = addDays(null, configCompletando.intervalo_dias);
-
-    const payload = {
-      proxima_fecha:  nuevaProxima,
-      ultima_ejecucion: new Date().toISOString().slice(0, 10),
-      en_mantenimiento: false,
-      tareas_resultado: tareasCompletando.map(t => ({ texto: t.texto, estado: t.estado })),
-    };
+    const nuevaProxima    = addDays(configCompletando.intervalo_dias);
+    const ultimaEjecucion = new Date().toISOString().slice(0, 10);
 
     try {
       const res = await fetch(`${API_URL}/preventivo/${configCompletando.clave_activo}/completar`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        body: JSON.stringify({
+          proxima_fecha:    nuevaProxima,
+          ultima_ejecucion: ultimaEjecucion,
+          tareas_resultado: tareasCompletando.map(t => ({ texto: t.texto, estado: t.estado })),
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -297,7 +445,9 @@ export default function Preventivo() {
       }
       setMostrarCompletarModal(false);
       setConfigCompletando(null);
-      setMensajeExito(`Mantenimiento completado. Próximo ciclo: ${new Date(nuevaProxima).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}`);
+      setMensajeExito(
+        `Mantenimiento completado. Próximo ciclo: ${new Date(nuevaProxima).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}`
+      );
       setTimeout(() => setMensajeExito(null), 5000);
       cargarDatos();
     } catch (err) {
@@ -307,39 +457,11 @@ export default function Preventivo() {
     }
   }
 
-  // ── Computed ──────────────────────────────────────────────
-
-  const configsFiltradas = configs.filter(c => {
-    const coincideBusqueda = busqueda === '' || c.clave_activo.toLowerCase().includes(busqueda.toLowerCase());
-    if (!coincideBusqueda) return false;
-
-    if (filtroEstado === '') return true;
-    const est = calcularEstado(c);
-    if (filtroEstado === 'vencido')       return est.esVencido;
-    if (filtroEstado === 'mantenimiento') return est.esEnMantenimiento;
-    if (filtroEstado === 'proximo')       return !est.esVencido && !est.esEnMantenimiento && diasHasta(c.proxima_fecha) !== null && diasHasta(c.proxima_fecha) <= 7 && diasHasta(c.proxima_fecha) >= 0;
-    if (filtroEstado === 'ok')            return est.clase === 'ok' && !est.esVencido && !est.esEnMantenimiento;
-    return true;
-  });
-
-  const kpiVencidos       = configs.filter(c => calcularEstado(c).esVencido).length;
-  const kpiMantenimiento  = configs.filter(c => calcularEstado(c).esEnMantenimiento).length;
-  const kpiProximos7      = configs.filter(c => {
-    const d = diasHasta(c.proxima_fecha);
-    return d !== null && d >= 0 && d <= 7 && !calcularEstado(c).esEnMantenimiento;
-  }).length;
-
-  const labelPeriodicidad = (config) => {
-    const p = PERIODICIDADES.find(p => p.dias === config.intervalo_dias);
-    return p ? p.label : `${config.intervalo_dias} días`;
-  };
-
-  // ── Render ────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────
 
   return (
     <div className="dashboard-container">
 
-      {/* Header */}
       <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1>Mantenimiento Preventivo</h1>
@@ -348,7 +470,6 @@ export default function Preventivo() {
         <button className="btn-primary" onClick={abrirModalNuevo}>+ Asignar Preventivo</button>
       </header>
 
-      {/* Banners */}
       {error && !mostrarModal && !mostrarCompletarModal && (
         <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>
           {error}
@@ -368,14 +489,14 @@ export default function Preventivo() {
           <span className="kpi-status info">Total registradas</span>
         </div>
         <div className="kpi-card">
-          <h3>Vencidas</h3>
-          <p className="kpi-number danger-text">{kpiVencidos}</p>
-          <span className="kpi-status danger">Requieren atención inmediata</span>
-        </div>
-        <div className="kpi-card">
           <h3>En Mantenimiento</h3>
           <p className="kpi-number warning-text">{kpiMantenimiento}</p>
           <span className="kpi-status warning">Ciclo activo en curso</span>
+        </div>
+        <div className="kpi-card">
+          <h3>Vencidas</h3>
+          <p className="kpi-number danger-text">{kpiVencidos}</p>
+          <span className="kpi-status danger">En mantenimiento y sin completar</span>
         </div>
         <div className="kpi-card">
           <h3>Próximos 7 días</h3>
@@ -395,8 +516,9 @@ export default function Preventivo() {
         />
         <select className="select-filter" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
           <option value="">Todos los estados</option>
-          <option value="vencido">Vencidos</option>
           <option value="mantenimiento">En Mantenimiento</option>
+          <option value="vencido">Vencido</option>
+          <option value="ambos">En Mantenimiento + Vencido</option>
           <option value="proximo">Próximos 7 días</option>
           <option value="ok">Al corriente</option>
         </select>
@@ -423,22 +545,17 @@ export default function Preventivo() {
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
               configsFiltradas.map(config => {
-                const est = calcularEstado(config);
+                const { esEnMantenimiento, esVencido } = calcularEstado(config);
+                const provNombre = proveedores.find(p => p.id_proveedor === config.id_proveedor)?.nombre;
 
                 return (
                   <tr key={config.id || config.clave_activo}>
-                    {/* Equipo */}
                     <td>
                       <strong>{config.clave_activo}</strong><br />
-                      <small style={{ color: '#7f8c8d' }}>{config.equipo?.marca} {config.equipo?.modelo}</small>
+                      <small style={{ color: '#7f8c8d' }}>{config.equipos?.marca} {config.equipos?.modelo}</small>
                     </td>
-
-                    {/* Periodicidad */}
                     <td>
-                      <span style={{
-                        padding: '3px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: '600',
-                        backgroundColor: '#e8f4fd', color: '#2980b9',
-                      }}>
+                      <span style={{ padding: '3px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: '600', backgroundColor: '#e8f4fd', color: '#2980b9' }}>
                         {labelPeriodicidad(config)}
                       </span>
                       <br />
@@ -446,30 +563,18 @@ export default function Preventivo() {
                         Última: {config.ultima_ejecucion ? new Date(config.ultima_ejecucion).toLocaleDateString('es-MX') : '—'}
                       </small>
                     </td>
-
-                    {/* Proveedor / Responsable */}
                     <td>
-                      <span style={{ fontSize: '13px' }}>{config.proveedor || '—'}</span>
+                      <span style={{ fontSize: '13px' }}>{provNombre || '—'}</span>
                       {config.responsable && (
-                        <>
-                          <br />
-                          <small style={{ color: '#7f8c8d' }}>Resp: {config.responsable}</small>
-                        </>
+                        <><br /><small style={{ color: '#7f8c8d' }}>Resp: {config.responsable}</small></>
                       )}
                     </td>
-
-                    {/* Tareas */}
                     <td>
-                      {(config.tareas && config.tareas.length > 0) ? (
-                        <span style={{ fontSize: '13px', color: '#2c3e50' }}>
-                          {config.tareas.length} tarea{config.tareas.length !== 1 ? 's' : ''}
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: '#bdc3c7' }}>Sin tareas</span>
-                      )}
+                      {config.tareas && config.tareas.length > 0
+                        ? <span style={{ fontSize: '13px' }}>{config.tareas.length} tarea{config.tareas.length !== 1 ? 's' : ''}</span>
+                        : <span style={{ fontSize: '12px', color: '#bdc3c7' }}>Sin tareas</span>
+                      }
                     </td>
-
-                    {/* Próxima fecha */}
                     <td>
                       <strong style={{ fontSize: '13px' }}>
                         {config.proxima_fecha
@@ -477,34 +582,18 @@ export default function Preventivo() {
                           : '—'}
                       </strong>
                     </td>
-
-                    {/* Estado */}
                     <td>
-                      <span className={`badge ${est.clase}`}>{est.texto}</span>
+                      <EstadoBadges config={config} />
                     </td>
-
-                    {/* Acciones */}
                     <td>
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {(est.esEnMantenimiento || est.esVencido) && (
-                          <button
-                            className="btn-icon"
-                            style={{ borderColor: '#27ae60', color: '#27ae60' }}
-                            onClick={() => abrirCompletarModal(config)}
-                          >
+                        {(esEnMantenimiento || esVencido) && (
+                          <button className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60' }} onClick={() => abrirCompletarModal(config)}>
                             ✓ Completar
                           </button>
                         )}
-                        <button className="btn-icon" onClick={() => abrirModalEditar(config)}>
-                          Editar
-                        </button>
-                        <button
-                          className="btn-icon"
-                          style={{ borderColor: '#e74c3c', color: '#e74c3c' }}
-                          onClick={() => eliminar(config.clave_activo)}
-                        >
-                          Eliminar
-                        </button>
+                        <button className="btn-icon" onClick={() => abrirModalEditar(config)}>Editar</button>
+                        <button className="btn-icon" style={{ borderColor: '#e74c3c', color: '#e74c3c' }} onClick={() => eliminar(config.clave_activo)}>Eliminar</button>
                       </div>
                     </td>
                   </tr>
@@ -515,7 +604,7 @@ export default function Preventivo() {
         </table>
       </section>
 
-      {/* ─── Modal: Registro / Edición ─────────────────────── */}
+      {/* ─── Modal: Registro / Edición ─────────────────────────── */}
       {mostrarModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -531,24 +620,20 @@ export default function Preventivo() {
 
             <form onSubmit={guardar}>
 
-              {/* Equipo */}
+              {/* Equipo — searchable picker, excludes already-configured equipos */}
               <div className="form-group">
                 <label>Equipo</label>
-                <select
-                  name="clave_activo"
+                <EquipoPicker
+                  equipos={equiposDisponibles}
                   value={form.clave_activo}
-                  onChange={handleInput}
-                  required
+                  onChange={val => setForm(prev => ({ ...prev, clave_activo: val }))}
                   disabled={modoEdicion}
-                  style={modoEdicion ? { backgroundColor: '#f4f7f6', cursor: 'not-allowed' } : {}}
-                >
-                  <option value="">-- Seleccionar equipo --</option>
-                  {equipos.map(eq => (
-                    <option key={eq.clave_activo} value={eq.clave_activo}>
-                      {eq.clave_activo} — {eq.marca} {eq.modelo}
-                    </option>
-                  ))}
-                </select>
+                />
+                {!modoEdicion && (
+                  <small style={{ color: '#7f8c8d', fontSize: '12px' }}>
+                    Solo se muestran equipos sin preventivo asignado.
+                  </small>
+                )}
               </div>
 
               {/* Periodicidad */}
@@ -568,55 +653,35 @@ export default function Preventivo() {
                 {form.periodicidad === 'otro' && (
                   <div className="form-group">
                     <label>Número de días</label>
-                    <input
-                      type="number"
-                      name="periodicidad_dias"
-                      value={form.periodicidad_dias}
-                      onChange={handleInput}
-                      placeholder="Ej. 45"
-                      min="1"
-                      required
-                    />
+                    <input type="number" name="periodicidad_dias" value={form.periodicidad_dias} onChange={handleInput} placeholder="Ej. 45" min="1" required />
                   </div>
                 )}
               </div>
 
-              {/* Proveedor + Responsable */}
+              {/* Proveedor (from DB) + Responsable */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 <div className="form-group">
                   <label>Proveedor Asignado (Opcional)</label>
-                  <input
-                    type="text"
-                    name="proveedor"
-                    value={form.proveedor}
-                    onChange={handleInput}
-                    placeholder="Nombre del proveedor"
-                  />
+                  <select name="id_proveedor" value={form.id_proveedor} onChange={handleInput}>
+                    <option value="">Resolución Interna</option>
+                    {proveedores.map(prov => (
+                      <option key={prov.id_proveedor} value={prov.id_proveedor}>
+                        {prov.nombre}{prov.es_preferido ? ' ⭐' : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Responsable</label>
-                  <input
-                    type="text"
-                    name="responsable"
-                    value={form.responsable}
-                    onChange={handleInput}
-                    placeholder="Nombre del responsable"
-                  />
+                  <input type="text" name="responsable" value={form.responsable} onChange={handleInput} placeholder="Nombre del responsable" />
                 </div>
               </div>
 
               {/* Tareas */}
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: '600', color: '#7f8c8d' }}>
-                    Lista de Tareas
-                  </label>
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    onClick={agregarTarea}
-                    style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
+                  <label style={{ fontSize: '14px', fontWeight: '600', color: '#7f8c8d' }}>Lista de Tareas</label>
+                  <button type="button" className="btn-icon" onClick={agregarTarea} style={{ fontSize: '13px' }}>
                     + Agregar tarea
                   </button>
                 </div>
@@ -630,9 +695,7 @@ export default function Preventivo() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {form.tareas.map((tarea, idx) => (
                     <div key={tarea.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '12px', color: '#bdc3c7', minWidth: '18px', textAlign: 'right' }}>
-                        {idx + 1}.
-                      </span>
+                      <span style={{ fontSize: '12px', color: '#bdc3c7', minWidth: '18px', textAlign: 'right' }}>{idx + 1}.</span>
                       <input
                         type="text"
                         value={tarea.texto}
@@ -642,15 +705,8 @@ export default function Preventivo() {
                         onFocus={e => e.target.style.borderColor = '#3498db'}
                         onBlur={e => e.target.style.borderColor = '#bdc3c7'}
                       />
-                      <button
-                        type="button"
-                        onClick={() => eliminarTarea(tarea.id)}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c',
-                          fontSize: '16px', padding: '4px', lineHeight: 1, borderRadius: '4px',
-                        }}
-                        title="Eliminar tarea"
-                      >
+                      <button type="button" onClick={() => eliminarTarea(tarea.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '18px', padding: '2px 4px', lineHeight: 1 }}>
                         ×
                       </button>
                     </div>
@@ -659,9 +715,7 @@ export default function Preventivo() {
               </div>
 
               <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={guardando}>
-                  Cancelar
-                </button>
+                <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={guardando}>Cancelar</button>
                 <button type="submit" className="btn-primary" disabled={guardando}>
                   {guardando ? 'Procesando...' : modoEdicion ? 'Aplicar Modificaciones' : 'Confirmar Registro'}
                 </button>
@@ -671,17 +725,15 @@ export default function Preventivo() {
         </div>
       )}
 
-      {/* ─── Modal: Completar Mantenimiento ────────────────── */}
+      {/* ─── Modal: Completar Mantenimiento ───────────────────────── */}
       {mostrarCompletarModal && configCompletando && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }}>
-
-            {/* Header */}
             <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               <h2 style={{ marginBottom: '4px' }}>Completar Mantenimiento</h2>
               <p style={{ fontSize: '13px', color: '#7f8c8d', margin: 0 }}>
                 {configCompletando.clave_activo}
-                {configCompletando.equipo && ` — ${configCompletando.equipo.marca} ${configCompletando.equipo.modelo}`}
+                {configCompletando.equipos && ` — ${configCompletando.equipos.marca} ${configCompletando.equipos.modelo}`}
               </p>
             </div>
 
@@ -691,14 +743,14 @@ export default function Preventivo() {
               </div>
             )}
 
-            {/* Next cycle info */}
             <div style={{ backgroundColor: '#eafaf1', border: '1px solid #a9dfbf', borderRadius: '6px', padding: '10px 14px', marginBottom: '20px', fontSize: '13px', color: '#1e8449' }}>
               Al finalizar, el próximo mantenimiento se programará para{' '}
-              <strong>{new Date(addDays(null, configCompletando.intervalo_dias)).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>
+              <strong>
+                {new Date(addDays(configCompletando.intervalo_dias)).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}
+              </strong>
               {' '}({labelPeriodicidad(configCompletando)} a partir de hoy).
             </div>
 
-            {/* Tareas checklist */}
             {tareasCompletando.length === 0 ? (
               <p style={{ fontSize: '14px', color: '#7f8c8d', textAlign: 'center', padding: '20px' }}>
                 Este preventivo no tiene tareas registradas.
@@ -709,71 +761,42 @@ export default function Preventivo() {
                   <p style={{ fontSize: '14px', fontWeight: '600', color: '#2c3e50', margin: 0 }}>
                     Tareas ({tareasCompletando.filter(t => t.estado !== 'pendiente').length}/{tareasCompletando.length} resueltas)
                   </p>
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    style={{ borderColor: '#27ae60', color: '#27ae60' }}
-                    onClick={marcarTodas}
-                  >
+                  <button type="button" className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60' }} onClick={marcarTodas}>
                     ✓ Marcar todas como Finalizado
                   </button>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
                   {tareasCompletando.map(tarea => (
-                    <div
-                      key={tarea.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '10px 12px',
-                        borderRadius: '6px',
-                        border: '1px solid',
-                        borderColor: tarea.estado === 'completado'  ? '#a9dfbf'
-                                   : tarea.estado === 'no_necesario' ? '#d5d8dc'
-                                   : '#ecf0f1',
-                        backgroundColor: tarea.estado === 'completado'  ? '#eafaf1'
-                                        : tarea.estado === 'no_necesario' ? '#f4f7f6'
-                                        : '#ffffff',
-                        transition: 'all 0.2s ease',
-                      }}
-                    >
+                    <div key={tarea.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 12px', borderRadius: '6px', border: '1px solid',
+                      borderColor: tarea.estado === 'completado' ? '#a9dfbf' : tarea.estado === 'no_necesario' ? '#d5d8dc' : '#ecf0f1',
+                      backgroundColor: tarea.estado === 'completado' ? '#eafaf1' : tarea.estado === 'no_necesario' ? '#f4f7f6' : '#ffffff',
+                      transition: 'all 0.2s ease',
+                    }}>
                       <span style={{
-                        fontSize: '13px',
+                        fontSize: '13px', flex: 1,
                         color: tarea.estado === 'no_necesario' ? '#95a5a6' : '#2c3e50',
                         textDecoration: tarea.estado === 'no_necesario' ? 'line-through' : 'none',
-                        flex: 1,
                       }}>
                         {tarea.texto}
                       </span>
                       <div style={{ display: 'flex', gap: '6px', marginLeft: '10px' }}>
-                        <button
-                          type="button"
-                          onClick={() => toggleTareaEstado(tarea.id, 'completado')}
-                          style={{
-                            padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
-                            fontWeight: '600', border: '1px solid',
-                            borderColor: tarea.estado === 'completado' ? '#27ae60' : '#bdc3c7',
-                            backgroundColor: tarea.estado === 'completado' ? '#27ae60' : 'transparent',
-                            color: tarea.estado === 'completado' ? 'white' : '#7f8c8d',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          ✓ Completado
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleTareaEstado(tarea.id, 'no_necesario')}
-                          style={{
-                            padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
-                            fontWeight: '600', border: '1px solid',
-                            borderColor: tarea.estado === 'no_necesario' ? '#95a5a6' : '#bdc3c7',
-                            backgroundColor: tarea.estado === 'no_necesario' ? '#ecf0f1' : 'transparent',
-                            color: tarea.estado === 'no_necesario' ? '#5d6d7e' : '#7f8c8d',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          No Necesario
-                        </button>
+                        <button type="button" onClick={() => toggleTareaEstado(tarea.id, 'completado')} style={{
+                          padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', border: '1px solid',
+                          borderColor: tarea.estado === 'completado' ? '#27ae60' : '#bdc3c7',
+                          backgroundColor: tarea.estado === 'completado' ? '#27ae60' : 'transparent',
+                          color: tarea.estado === 'completado' ? 'white' : '#7f8c8d',
+                          transition: 'all 0.15s ease',
+                        }}>✓ Completado</button>
+                        <button type="button" onClick={() => toggleTareaEstado(tarea.id, 'no_necesario')} style={{
+                          padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', border: '1px solid',
+                          borderColor: tarea.estado === 'no_necesario' ? '#95a5a6' : '#bdc3c7',
+                          backgroundColor: tarea.estado === 'no_necesario' ? '#ecf0f1' : 'transparent',
+                          color: tarea.estado === 'no_necesario' ? '#5d6d7e' : '#7f8c8d',
+                          transition: 'all 0.15s ease',
+                        }}>No Necesario</button>
                       </div>
                     </div>
                   ))}
@@ -781,26 +804,20 @@ export default function Preventivo() {
               </>
             )}
 
-            {/* Actions */}
             <div className="modal-actions">
-              <button
-                type="button"
-                className="btn-secondary"
+              <button type="button" className="btn-secondary"
                 onClick={() => { setMostrarCompletarModal(false); setConfigCompletando(null); setError(null); }}
-                disabled={finalizando}
-              >
+                disabled={finalizando}>
                 Cancelar
               </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={finalizarMantenimiento}
+              <button type="button" onClick={finalizarMantenimiento}
                 disabled={finalizando || (!todasResueltas && tareasCompletando.length > 0)}
                 style={{
                   backgroundColor: todasResueltas || tareasCompletando.length === 0 ? '#27ae60' : '#95a5a6',
+                  color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px',
+                  fontSize: '14px', fontWeight: 'bold', cursor: finalizando || (!todasResueltas && tareasCompletando.length > 0) ? 'not-allowed' : 'pointer',
                   transition: 'background-color 0.2s ease',
-                }}
-              >
+                }}>
                 {finalizando ? 'Procesando...' : 'Finalizar Mantenimiento'}
               </button>
             </div>
