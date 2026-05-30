@@ -22,24 +22,21 @@ async function obtenerPreventivos(req, res) {
 // GET /api/preventivo/calendario
 async function obtenerFechasCalendario(req, res) {
   const { data, error } = await supabase
-    .from('mantenimientos')
-    .select('clave_activo, fecha_programada, descripcion')
-    .eq('tipo_mantenimiento', 'Preventivo')
-    .neq('estatus', 'Completado')
-    .not('fecha_programada', 'is', null)
-    .order('fecha_programada', { ascending: true });
+    .from('preventivo')
+    .select('clave_activo, proxima_fecha')
+    .not('proxima_fecha', 'is', null)
+    .order('proxima_fecha', { ascending: true });
 
   if (error) return res.status(500).json({ error: error.message });
 
   const mapped = data.map(r => ({
-    clave_activo:      r.clave_activo,
-    proxima_fecha:     r.fecha_programada,
-    tipo_requerimiento: r.descripcion,
+    clave_activo:       r.clave_activo,
+    proxima_fecha:      r.proxima_fecha,
+    tipo_requerimiento: 'Preventivo',
   }));
 
   res.json(mapped);
 }
-
 // POST /api/preventivo/legacy  (old create — mantenimientos table)
 async function crearPreventivoLegacy(req, res) {
   const {
