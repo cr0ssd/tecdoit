@@ -1,10 +1,13 @@
 // server/controllers/preventivoController.js
-// All preventivo data lives in the existing `mantenimientos` table
-// filtered by tipo_mantenimiento = 'Preventivo'
 
 const supabase = require('../config/supabaseClient');
 
-// GET all preventivo records
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY endpoints — kept intact, still read from `mantenimientos` table.
+// Do not remove; other routes or the Dashboard calendar may depend on them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/preventivo/legacy
 async function obtenerPreventivos(req, res) {
   const { data, error } = await supabase
     .from('mantenimientos')
@@ -16,7 +19,7 @@ async function obtenerPreventivos(req, res) {
   res.json(data);
 }
 
-// GET calendar due dates (fecha_programada) for preventivos
+// GET /api/preventivo/calendario
 async function obtenerFechasCalendario(req, res) {
   const { data, error } = await supabase
     .from('mantenimientos')
@@ -28,19 +31,17 @@ async function obtenerFechasCalendario(req, res) {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Rename to proxima_fecha so the Dashboard calendar widget works unchanged
   const mapped = data.map(r => ({
-    clave_activo: r.clave_activo,
-    proxima_fecha: r.fecha_programada,
+    clave_activo:      r.clave_activo,
+    proxima_fecha:     r.fecha_programada,
     tipo_requerimiento: r.descripcion,
   }));
 
   res.json(mapped);
 }
 
-// POST create preventivo — reuses existing mantenimientoController logic
-// but hardcodes tipo_mantenimiento = 'Preventivo'
-async function crearPreventivo(req, res) {
+// POST /api/preventivo/legacy  (old create — mantenimientos table)
+async function crearPreventivoLegacy(req, res) {
   const {
     clave_activo,
     descripcion,
@@ -60,22 +61,21 @@ async function crearPreventivo(req, res) {
     .from('mantenimientos')
     .insert([{
       clave_activo,
-      tipo_mantenimiento: 'Preventivo',
+      tipo_mantenimiento:  'Preventivo',
       descripcion,
       descripcion_problema: descripcion_problema || null,
-      solucion_esperada: solucion_esperada || null,
-      prioridad: prioridad || 0,
-      id_proveedor: id_proveedor || null,
-      fecha_programada: fecha_programada || null,
-      costo: costo || 0,
-      estatus: 'Abierto',
+      solucion_esperada:    solucion_esperada    || null,
+      prioridad:            prioridad            || 0,
+      id_proveedor:         id_proveedor         || null,
+      fecha_programada:     fecha_programada     || null,
+      costo:                costo                || 0,
+      estatus:              'Abierto',
     }])
     .select()
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
 
-  // Mark equipo as En Mantenimiento
   await supabase
     .from('equipos')
     .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
@@ -84,8 +84,8 @@ async function crearPreventivo(req, res) {
   res.status(201).json(data);
 }
 
-// PATCH complete a preventivo
-async function completarPreventivo(req, res) {
+// PATCH /api/preventivo/legacy/:id/completar  (old complete — mantenimientos table)
+async function completarPreventivoLegacy(req, res) {
   const { id } = req.params;
   const { clave_activo } = req.body;
 
@@ -108,4 +108,140 @@ async function completarPreventivo(req, res) {
   res.json(data);
 }
 
-module.exports = { obtenerPreventivos, obtenerFechasCalendario, crearPreventivo, completarPreventivo };
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW endpoints — read/write the dedicated `preventivo` table.
+// These are what Preventivo.jsx calls.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/preventivo
+// Returns all preventivo configs joined with equipo data.
+async function obtenerConfigs(req, res) {
+  const { data, error } = await supabase
+    .from('preventivo')
+    .select('*, equipos ( marca, modelo, horas_acumuladas )')
+    .order('proxima_fecha', { ascending: true, nullsFirst: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+}
+
+// POST /api/preventivo
+// Creates a new preventivo config for an equipo.
+// Body: { clave_activo, intervalo_dias, proxima_fecha, proveedor, responsable, tareas[] }
+async function crearConfig(req, res) {
+  const {
+    clave_activo,
+    intervalo_dias,
+    proxima_fecha,
+    proveedor,
+    responsable,
+    tareas,
+  } = req.body;
+
+  if (!clave_activo || !intervalo_dias) {
+    return res.status(400).json({ error: 'clave_activo e intervalo_dias son requeridos.' });
+  }
+
+  const { data, error } = await supabase
+    .from('preventivo')
+    .insert([{
+      clave_activo,
+      intervalo_dias:  Number(intervalo_dias),
+      proxima_fecha:   proxima_fecha  || null,
+      proveedor:       proveedor      || null,
+      responsable:     responsable    || null,
+      tareas:          tareas         || [],
+    }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json(data);
+}
+
+// PUT /api/preventivo/:clave
+// Updates an existing preventivo config (does not reset the cycle).
+// Body: { intervalo_dias, proxima_fecha, proveedor, responsable, tareas[] }
+async function actualizarConfig(req, res) {
+  const { clave } = req.params;
+  const {
+    intervalo_dias,
+    proxima_fecha,
+    proveedor,
+    responsable,
+    tareas,
+  } = req.body;
+
+  const updates = {};
+  if (intervalo_dias !== undefined) updates.intervalo_dias = Number(intervalo_dias);
+  if (proxima_fecha  !== undefined) updates.proxima_fecha  = proxima_fecha;
+  if (proveedor      !== undefined) updates.proveedor      = proveedor;
+  if (responsable    !== undefined) updates.responsable    = responsable;
+  if (tareas         !== undefined) updates.tareas         = tareas;
+
+  const { data, error } = await supabase
+    .from('preventivo')
+    .update(updates)
+    .eq('clave_activo', clave)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+}
+
+// DELETE /api/preventivo/:clave
+// Removes a preventivo config. Does NOT change the equipo estatus.
+async function eliminarConfig(req, res) {
+  const { clave } = req.params;
+
+  const { error } = await supabase
+    .from('preventivo')
+    .delete()
+    .eq('clave_activo', clave);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+}
+
+// PATCH /api/preventivo/:clave/completar
+// Finalizes an active maintenance cycle via the DB RPC function.
+// The RPC handles all three writes atomically:
+//   1. Resets proxima_fecha + ultima_ejecucion, clears en_mantenimiento
+//   2. Sets equipo estatus back to 'Activo', resets horas_acumuladas
+//   3. Inserts a row into preventivo_historial
+// Body: { proxima_fecha, ultima_ejecucion, tareas_resultado[] }
+async function completarConfig(req, res) {
+  const { clave } = req.params;
+  const { proxima_fecha, ultima_ejecucion, tareas_resultado } = req.body;
+
+  if (!proxima_fecha || !ultima_ejecucion) {
+    return res.status(400).json({ error: 'proxima_fecha y ultima_ejecucion son requeridos.' });
+  }
+
+  const { error } = await supabase.rpc('completar_preventivo', {
+    p_clave_activo:     clave,
+    p_proxima_fecha:    proxima_fecha,
+    p_ultima_ejecucion: ultima_ejecucion,
+    p_tareas_resultado: tareas_resultado || [],
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+module.exports = {
+  // Legacy — mantenimientos table
+  obtenerPreventivos,
+  obtenerFechasCalendario,
+  crearPreventivoLegacy,
+  completarPreventivoLegacy,
+  // New — preventivo table
+  obtenerConfigs,
+  crearConfig,
+  actualizarConfig,
+  eliminarConfig,
+  completarConfig,
+};
