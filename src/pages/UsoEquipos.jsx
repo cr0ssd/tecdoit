@@ -2,6 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { usoEquiposAPI } from '../services/api';
 
+// ─── Carrera helpers ──────────────────────────────────────────────────────────
+// Quick-select options shown as pill buttons
+const CARRERAS_RAPIDAS = ['PREPA','EXTERNO'];
+
+// Regex mirrors backend: exactly 3 uppercase letters OR "PREPA"
+const CARRERA_REGEX = /^([A-Z]{3}|EXTERNO|PREPA)$/;
+
+function normalizarCarrera(raw) {
+  return raw ? raw.trim().toUpperCase() : '';
+}
+
+function carreraValida(val) {
+  return CARRERA_REGEX.test(normalizarCarrera(val));
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 function UsoEquipos() {
   const [registros, setRegistros] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -13,8 +29,13 @@ function UsoEquipos() {
   const [nuevoUso, setNuevoUso] = useState({
     clave_activo: '',
     usuario_nombre: '',
-    proposito: ''
+    proposito: '',
+    carrera: '',
   });
+
+  // Tracks whether the user typed a custom carrera (not a pill pick)
+  const [carreraCustom, setCarreraCustom] = useState(false);
+  const [carreraError, setCarreraError] = useState(null);
 
   useEffect(() => {
     obtenerRegistros();
@@ -34,7 +55,23 @@ function UsoEquipos() {
   }
 
   const handleInputChange = (e) => {
-    setNuevoUso({ ...nuevoUso, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setNuevoUso(prev => ({ ...prev, [name]: value }));
+    if (name === 'carrera') setCarreraError(null);
+  };
+
+  // Pill selection — directly sets a valid value
+  const seleccionarCarrera = (valor) => {
+    setNuevoUso(prev => ({ ...prev, carrera: valor }));
+    setCarreraCustom(false);
+    setCarreraError(null);
+  };
+
+  // Toggle to free-entry mode
+  const activarCarreraCustom = () => {
+    setNuevoUso(prev => ({ ...prev, carrera: '' }));
+    setCarreraCustom(true);
+    setCarreraError(null);
   };
 
   const handleQRScan = (resultado) => {
@@ -59,17 +96,31 @@ function UsoEquipos() {
     e.preventDefault();
     setError(null);
     setMensajeExito(null);
+    setCarreraError(null);
+
+    // Client-side carrera validation before hitting the network
+    const carreraFinal = normalizarCarrera(nuevoUso.carrera);
+    if (!carreraFinal) {
+      setCarreraError('Selecciona o ingresa una carrera.');
+      return;
+    }
+    if (!carreraValida(carreraFinal)) {
+      setCarreraError('Debe ser 3 letras (Ej: ITC) o "Prepa".');
+      return;
+    }
+
     try {
       await usoEquiposAPI.iniciarUso({
         clave_activo: nuevoUso.clave_activo,
         usuario_nombre: nuevoUso.usuario_nombre,
-        proposito: nuevoUso.proposito
+        proposito: nuevoUso.proposito,
+        carrera: carreraFinal,
       });
       setMensajeExito('Sesión de uso iniciada correctamente.');
-      setNuevoUso({ clave_activo: '', usuario_nombre: '', proposito: '' });
+      setNuevoUso({ clave_activo: '', usuario_nombre: '', proposito: '', carrera: '' });
+      setCarreraCustom(false);
       obtenerRegistros();
     } catch (err) {
-      // Error message comes directly from backend validation
       setError(err.message);
     }
   };
@@ -94,7 +145,7 @@ function UsoEquipos() {
       month: 'short',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true
+      hour12: true,
     });
   };
 
@@ -117,6 +168,7 @@ function UsoEquipos() {
         </div>
       )}
 
+      {/* ── Registration form ─────────────────────────────────────────────── */}
       <section className="kpi-card" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <h2 style={{ fontSize: '16px', color: '#2c3e50' }}>Registrar Nueva Sesión</h2>
@@ -132,7 +184,9 @@ function UsoEquipos() {
 
         {mostrarCamara && (
           <div style={{ maxWidth: '300px', margin: '0 auto 20px auto', border: '2px dashed #3498db', padding: '10px', borderRadius: '8px' }}>
-            <p style={{ textAlign: 'center', fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>Apunta el código QR a tu cámara</p>
+            <p style={{ textAlign: 'center', fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>
+              Apunta el código QR a tu cámara
+            </p>
             <Scanner
               onScan={(resultado) => handleQRScan(resultado)}
               onResult={(resultado) => handleQRScan(resultado)}
@@ -141,36 +195,149 @@ function UsoEquipos() {
           </div>
         )}
 
-        <form onSubmit={iniciarUso} style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
-            <label>Clave del Equipo</label>
-            <input
-              type="text"
-              name="clave_activo"
-              required
-              value={nuevoUso.clave_activo}
-              onChange={handleInputChange}
-              placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)"
-            />
+        <form onSubmit={iniciarUso}>
+          {/* Row 1: equipment, user, purpose */}
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '15px' }}>
+            <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
+              <label>Clave del Equipo</label>
+              <input
+                type="text"
+                name="clave_activo"
+                required
+                value={nuevoUso.clave_activo}
+                onChange={handleInputChange}
+                placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)"
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
+              <label>Nombre del Usuario / Alumno</label>
+              <input
+                type="text"
+                name="usuario_nombre"
+                required
+                value={nuevoUso.usuario_nombre}
+                onChange={handleInputChange}
+                placeholder="Nombre completo"
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
+              <label>Propósito (Opcional)</label>
+              <input
+                type="text"
+                name="proposito"
+                value={nuevoUso.proposito}
+                onChange={handleInputChange}
+                placeholder="Ej. Práctica de redes"
+              />
+            </div>
           </div>
-          <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
-            <label>Nombre del Usuario / Alumno</label>
-            <input type="text" name="usuario_nombre" required value={nuevoUso.usuario_nombre} onChange={handleInputChange} placeholder="Nombre completo" />
+
+          {/* Row 2: carrera selector + submit */}
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div className="form-group" style={{ flex: 1, minWidth: '280px', marginBottom: 0 }}>
+              <label>
+                Carrera <span style={{ color: '#e74c3c', fontWeight: '700' }}>*</span>
+              </label>
+
+              {/* Pill quick-select */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: carreraCustom ? '8px' : '0' }}>
+                {CARRERAS_RAPIDAS.map((opcion) => {
+                  const selected = !carreraCustom && nuevoUso.carrera === opcion;
+                  return (
+                    <button
+                      key={opcion}
+                      type="button"
+                      onClick={() => seleccionarCarrera(opcion)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        border: `2px solid ${selected ? '#3498db' : '#bdc3c7'}`,
+                        backgroundColor: selected ? '#3498db' : 'transparent',
+                        color: selected ? 'white' : '#7f8c8d',
+                        fontSize: '13px',
+                        fontWeight: selected ? '700' : '400',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {opcion}
+                    </button>
+                  );
+                })}
+
+                {/* "Profesional" toggle */}
+                <button
+                  type="button"
+                  onClick={activarCarreraCustom}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    border: `2px solid ${carreraCustom ? '#3498db' : '#bdc3c7'}`,
+                    backgroundColor: carreraCustom ? '#eaf4fb' : 'transparent',
+                    color: carreraCustom ? '#2980b9' : '#7f8c8d',
+                    fontSize: '13px',
+                    fontWeight: carreraCustom ? '700' : '400',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Profesional…
+                </button>
+              </div>
+
+              {/* Free-entry input shown only when "Profesional" is active */}
+              {carreraCustom && (
+                <input
+                  type="text"
+                  name="carrera"
+                  value={nuevoUso.carrera}
+                  onChange={handleInputChange}
+                  placeholder="3 letras, Ej: LIN, ARQ…"
+                  maxLength={5}
+                  autoFocus
+                  style={{
+                    padding: '8px 10px',
+                    border: `1px solid ${carreraError ? '#e74c3c' : '#bdc3c7'}`,
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    width: '160px',
+                    outline: 'none',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = '#3498db')}
+                  onBlur={e => (e.target.style.borderColor = carreraError ? '#e74c3c' : '#bdc3c7')}
+                />
+              )}
+
+              {/* Inline validation hint */}
+              {carreraError && (
+                <span style={{ fontSize: '12px', color: '#e74c3c', marginTop: '4px', display: 'block' }}>
+                  {carreraError}
+                </span>
+              )}
+              {!carreraError && (
+                <span style={{ fontSize: '11px', color: '#bdc3c7', marginTop: '4px', display: 'block' }}>
+                  Elige una opción o escribe 3 letras / "Prepa"
+                </span>
+              )}
+            </div>
+
+            <button type="submit" className="btn-primary" style={{ height: '41px', flexShrink: 0 }}>
+              Iniciar Uso
+            </button>
           </div>
-          <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
-            <label>Propósito (Opcional)</label>
-            <input type="text" name="proposito" value={nuevoUso.proposito} onChange={handleInputChange} placeholder="Ej. Práctica de redes" />
-          </div>
-          <button type="submit" className="btn-primary" style={{ height: '41px' }}>Iniciar Uso</button>
         </form>
       </section>
 
+      {/* ── Bitácora table ────────────────────────────────────────────────── */}
       <section className="table-container">
         <table className="data-table">
           <thead>
             <tr>
               <th>Equipo</th>
               <th>Usuario</th>
+              <th>Carrera</th>
               <th>Inicio</th>
               <th>Fin</th>
               <th>Estatus</th>
@@ -179,17 +346,47 @@ function UsoEquipos() {
           </thead>
           <tbody>
             {cargando ? (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>Cargando bitácora...</td></tr>
+              <tr>
+                <td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>
+                  Procesando información...
+                </td>
+              </tr>
             ) : registros.length === 0 ? (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>No hay registros de uso aún.</td></tr>
+              <tr>
+                <td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>
+                  No se localizaron registros bajo los criterios especificados.
+                </td>
+              </tr>
             ) : (
               registros.map((reg) => (
                 <tr key={reg.id_uso}>
                   <td>
-                    <strong>{reg.clave_activo}</strong><br />
+                    <strong>{reg.clave_activo}</strong>
+                    <br />
                     <small>{reg.equipos?.marca} {reg.equipos?.modelo}</small>
                   </td>
-                  <td>{reg.usuario_nombre}<br /><small>{reg.proposito}</small></td>
+                  <td>
+                    {reg.usuario_nombre}
+                    <br />
+                    <small style={{ color: '#7f8c8d' }}>{reg.proposito}</small>
+                  </td>
+                  <td>
+                    {reg.carrera ? (
+                      <span style={{
+                        padding: '3px 10px',
+                        borderRadius: '10px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        backgroundColor: '#e8f4fd',
+                        color: '#2980b9',
+                        letterSpacing: '0.5px',
+                      }}>
+                        {reg.carrera}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '12px', color: '#bdc3c7' }}>—</span>
+                    )}
+                  </td>
                   <td>{formatearFecha(reg.hora_inicio)}</td>
                   <td>{formatearFecha(reg.hora_fin)}</td>
                   <td>
