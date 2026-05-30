@@ -95,13 +95,29 @@ async function actualizarEstatus(req, res) {
 }
 
 // PATCH complete/close a correctivo ticket
+// Accepts: clave_activo, accion_correctiva (text), costo_final (numeric)
 async function completarTicket(req, res) {
   const { id } = req.params;
-  const { clave_activo } = req.body;
+  const { clave_activo, accion_correctiva, costo_final } = req.body;
+
+  const updatePayload = {
+    estatus: 'Completado',
+    fecha_cierre: new Date().toISOString(),
+  };
+
+  // Only overwrite accion_correctiva if provided
+  if (accion_correctiva !== undefined && accion_correctiva !== null) {
+    updatePayload.accion_correctiva = accion_correctiva;
+  }
+
+  // Only overwrite costo if a final value was supplied
+  if (costo_final !== undefined && costo_final !== null && costo_final !== '') {
+    updatePayload.costo = Number(costo_final);
+  }
 
   const { data, error } = await supabase
     .from('mantenimientos')
-    .update({ estatus: 'Completado', fecha_cierre: new Date().toISOString() })
+    .update(updatePayload)
     .eq('id_mantenimiento', id)
     .select()
     .single();

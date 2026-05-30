@@ -3,7 +3,6 @@ import { proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-
 const PRIORIDAD_CONFIG = [
   { valor: 0, label: 'Sin definir', color: '#bdc3c7', bg: '#f4f6f7' },
   { valor: 1, label: 'Muy baja',    color: '#27ae60', bg: '#eafaf1' },
@@ -78,6 +77,168 @@ function formatMoneda(val) {
   return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(val || 0);
 }
 
+// ── Modal: Completar ticket — collects accion_correctiva + costo_final ─────────
+function CompletarModal({ ticket, onClose, onCompletado }) {
+  const [accionCorrectiva, setAccionCorrectiva] = useState('');
+  const [costoFinal, setCostoFinal] = useState(ticket.costo != null ? String(ticket.costo) : '');
+  const [cerrando, setCerrando] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleConfirmar(e) {
+    e.preventDefault();
+    if (!accionCorrectiva.trim()) {
+      setError('La acción correctiva es obligatoria para cerrar el ticket.');
+      return;
+    }
+    setCerrando(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/correctivo/${ticket.id_mantenimiento}/completar`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clave_activo:      ticket.clave_activo,
+          accion_correctiva: accionCorrectiva.trim(),
+          costo_final:       costoFinal !== '' ? Number(costoFinal) : ticket.costo,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Error al completar el ticket');
+      }
+      onCompletado();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCerrando(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        style={{ maxWidth: '520px' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
+          <h2 style={{ fontSize: '18px', color: '#2c3e50', marginBottom: '4px' }}>
+            Cerrar Ticket #{ticket.id_mantenimiento}
+          </h2>
+          <p style={{ fontSize: '13px', color: '#7f8c8d', margin: 0 }}>
+            {ticket.clave_activo}
+            {ticket.equipos && ` — ${ticket.equipos.marca} ${ticket.equipos.modelo}`}
+          </p>
+        </div>
+
+        {/* Info banner */}
+        <div style={{
+          backgroundColor: '#eafaf1', border: '1px solid #a9dfbf', borderRadius: '6px',
+          padding: '10px 14px', marginBottom: '20px', fontSize: '13px', color: '#1e8449',
+          display: 'flex', alignItems: 'flex-start', gap: '8px',
+        }}>
+          <span style={{ fontSize: '16px', lineHeight: 1.4 }}>✓</span>
+          <span>Al confirmar, el ticket se marcará como <strong>Completado</strong> y el equipo regresará a estatus <strong>Activo</strong>.</span>
+        </div>
+
+        {error && (
+          <div style={{
+            backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px',
+            borderRadius: '6px', fontSize: '13px', marginBottom: '15px',
+          }}>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleConfirmar}>
+          {/* Acción Correctiva */}
+          <div className="form-group">
+            <label>
+              Acción Correctiva{' '}
+              <span style={{ color: '#e74c3c', fontWeight: '700' }}>*</span>
+            </label>
+            <textarea
+              value={accionCorrectiva}
+              onChange={e => setAccionCorrectiva(e.target.value)}
+              required
+              rows={5}
+              placeholder="Describe el procedimiento que se realizó para resolver la falla. Ej: Se reemplazó la fuente de poder, se limpió el sistema de refrigeración, se actualizó firmware..."
+              style={{
+                padding: '10px',
+                border: '1px solid #bdc3c7',
+                borderRadius: '6px',
+                fontSize: '14px',
+                resize: 'vertical',
+                width: '100%',
+                outline: 'none',
+                fontFamily: 'inherit',
+                lineHeight: '1.5',
+                transition: 'border-color 0.2s ease',
+              }}
+              onFocus={e => e.target.style.borderColor = '#3498db'}
+              onBlur={e => e.target.style.borderColor = '#bdc3c7'}
+            />
+            <small style={{ color: '#7f8c8d', fontSize: '12px' }}>
+              Este registro quedará guardado en el historial permanente del equipo.
+            </small>
+          </div>
+
+          {/* Costo Final */}
+          <div className="form-group" style={{ marginTop: '4px' }}>
+            <label>Costo Final del Servicio ($)</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{
+                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                color: '#7f8c8d', fontSize: '14px', pointerEvents: 'none',
+              }}>
+                $
+              </span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={costoFinal}
+                onChange={e => setCostoFinal(e.target.value)}
+                placeholder={ticket.costo != null ? String(ticket.costo) : '0.00'}
+                style={{
+                  padding: '10px 10px 10px 26px',
+                  border: '1px solid #bdc3c7',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  width: '100%',
+                  outline: 'none',
+                }}
+                onFocus={e => e.target.style.borderColor = '#3498db'}
+                onBlur={e => e.target.style.borderColor = '#bdc3c7'}
+              />
+            </div>
+            {ticket.costo != null && Number(ticket.costo) > 0 && (
+              <small style={{ color: '#7f8c8d', fontSize: '12px' }}>
+                Costo estimado registrado: {formatMoneda(ticket.costo)}
+              </small>
+            )}
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={cerrando}>
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={cerrando}
+              style={{ backgroundColor: '#27ae60', transition: 'background-color 0.2s ease' }}
+            >
+              {cerrando ? 'Procesando...' : '✓ Confirmar y Cerrar Ticket'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Ticket inspect modal ───────────────────────────────────────────────────────
 function TicketDetalle({ ticket, onClose }) {
   const estConf = ESTATUS_CONFIG[ticket.estatus] || ESTATUS_CONFIG['Abierto'];
@@ -138,12 +299,32 @@ function TicketDetalle({ ticket, onClose }) {
         )}
 
         {/* Descripción */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: ticket.accion_correctiva ? '16px' : '20px' }}>
           <div style={{ fontSize: '11px', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Descripción de la falla</div>
           <div style={{ padding: '12px 14px', backgroundColor: '#f8f9fa', borderRadius: '6px', fontSize: '14px', color: '#2c3e50', lineHeight: '1.5' }}>
             {ticket.descripcion}
           </div>
         </div>
+
+        {/* Acción Correctiva — shown only when present */}
+        {ticket.accion_correctiva && (
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ fontSize: '11px', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+              Acción Correctiva Aplicada
+            </div>
+            <div style={{
+              padding: '12px 14px',
+              backgroundColor: '#eafaf1',
+              borderRadius: '6px',
+              fontSize: '14px',
+              color: '#1e8449',
+              lineHeight: '1.6',
+              borderLeft: '3px solid #27ae60',
+            }}>
+              {ticket.accion_correctiva}
+            </div>
+          </div>
+        )}
 
         {/* Timeline visual */}
         <div style={{ marginBottom: '20px' }}>
@@ -325,6 +506,7 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
 function EquipoPanel({ clave, tickets, proveedores, onClose, onCompletar, onCambiarEstatus, onRefresh }) {
   const [ticketInspectado, setTicketInspectado] = useState(null);
   const [ticketEditado, setTicketEditado]       = useState(null);
+  const [ticketCompletando, setTicketCompletando] = useState(null);
 
   const activos    = tickets.filter(t => t.clave_activo === clave && t.estatus !== 'Completado');
   const historial  = tickets.filter(t => t.clave_activo === clave && t.estatus === 'Completado');
@@ -425,7 +607,7 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCompletar, onCamb
                           </button>
                         )}
                         <button className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60', fontSize: '11px' }}
-                          onClick={() => onCompletar(t.id_mantenimiento, t.clave_activo)}>
+                          onClick={() => setTicketCompletando(t)}>
                           ✓ Completar
                         </button>
                       </div>
@@ -452,24 +634,44 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCompletar, onCamb
                   <div key={t.id_mantenimiento} style={{
                     padding: '12px 16px', border: '1px solid #ecf0f1', borderRadius: '8px',
                     borderLeft: '3px solid #27ae60', backgroundColor: '#fafafa',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
                   }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '700', color: '#7f8c8d' }}>#{t.id_mantenimiento}</span>
-                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', backgroundColor: '#eafaf1', color: '#27ae60' }}>Completado</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '6px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '700', color: '#7f8c8d' }}>#{t.id_mantenimiento}</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', backgroundColor: '#eafaf1', color: '#27ae60' }}>Completado</span>
+                        </div>
+                        <p style={{ fontSize: '13px', color: '#2c3e50', margin: '0 0 3px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {t.descripcion}
+                        </p>
+                        <span style={{ fontSize: '11px', color: '#7f8c8d' }}>
+                          Cerrado: {formatFecha(t.fecha_cierre)} · {formatMoneda(t.costo)}
+                        </span>
+                        {/* Acción correctiva preview in history card */}
+                        {t.accion_correctiva && (
+                          <div style={{
+                            marginTop: '6px',
+                            padding: '6px 8px',
+                            backgroundColor: '#eafaf1',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            color: '#1e8449',
+                            borderLeft: '2px solid #27ae60',
+                            overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            lineHeight: '1.4',
+                          }}>
+                            <strong>Acción: </strong>{t.accion_correctiva}
+                          </div>
+                        )}
                       </div>
-                      <p style={{ fontSize: '13px', color: '#2c3e50', margin: '0 0 3px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {t.descripcion}
-                      </p>
-                      <span style={{ fontSize: '11px', color: '#7f8c8d' }}>
-                        Cerrado: {formatFecha(t.fecha_cierre)} · {formatMoneda(t.costo)}
-                      </span>
+                      <button className="btn-icon" style={{ fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                        onClick={() => setTicketInspectado(t)}>
+                        🔍 Inspeccionar
+                      </button>
                     </div>
-                    <button className="btn-icon" style={{ fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                      onClick={() => setTicketInspectado(t)}>
-                      🔍 Inspeccionar
-                    </button>
                   </div>
                 ))}
               </div>
@@ -493,6 +695,18 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCompletar, onCamb
           proveedores={proveedores}
           onClose={() => setTicketEditado(null)}
           onGuardado={() => { setTicketEditado(null); onRefresh(); }}
+        />
+      )}
+
+      {/* Completar modal on top of panel */}
+      {ticketCompletando && (
+        <CompletarModal
+          ticket={ticketCompletando}
+          onClose={() => setTicketCompletando(null)}
+          onCompletado={() => {
+            setTicketCompletando(null);
+            onRefresh();
+          }}
         />
       )}
     </>
@@ -519,6 +733,9 @@ export default function Correctivo() {
 
   // Panel state — which machine's panel is open
   const [panelClave, setPanelClave] = useState(null);
+
+  // Completar modal state for table-level action
+  const [ticketCompletando, setTicketCompletando] = useState(null);
 
   const [form, setForm] = useState({
     clave_activo: '',
@@ -610,21 +827,6 @@ export default function Correctivo() {
     }
   }
 
-  async function completar(id, clave_activo) {
-    try {
-      const res = await fetch(`${API_URL}/correctivo/${id}/completar`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clave_activo }),
-      });
-      if (!res.ok) throw new Error('Error al completar');
-      mostrarExitoMsg('Ticket cerrado correctamente.');
-      await cargarDatos();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
   function mostrarExitoMsg(msg) {
     setMensajeExito(msg);
     setTimeout(() => setMensajeExito(null), 3500);
@@ -696,7 +898,6 @@ export default function Correctivo() {
             <option key={l.id_laboratorio} value={l.id_laboratorio}>{l.nombre}</option>
           ))}
         </select>
-
         <select className="select-filter" value={filtroEstatus} onChange={e => setFiltroEstatus(e.target.value)}>
           <option value="">Todos los estatus</option>
           <option value="Abierto">Abierto</option>
@@ -745,6 +946,12 @@ export default function Correctivo() {
                     </td>
                     <td style={{ maxWidth: '200px' }}>
                       <span style={{ fontSize: '13px' }}>{t.descripcion}</span>
+                      {/* Acción correctiva teaser for completed tickets in table */}
+                      {t.estatus === 'Completado' && t.accion_correctiva && (
+                        <div style={{ fontSize: '11px', color: '#27ae60', marginTop: '3px', fontStyle: 'italic' }}>
+                          ✓ Acción registrada
+                        </div>
+                      )}
                     </td>
                     <td>{t.proveedores?.nombre || 'Resolución interna'}</td>
                     <td>{formatFecha(t.fecha_programada)}</td>
@@ -777,7 +984,7 @@ export default function Correctivo() {
                         )}
                         {abierto && (
                           <button className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60', fontSize: '11px' }}
-                            onClick={() => completar(t.id_mantenimiento, t.clave_activo)}>
+                            onClick={() => setTicketCompletando(t)}>
                             ✓ Completar
                           </button>
                         )}
@@ -877,6 +1084,19 @@ export default function Correctivo() {
         </div>
       )}
 
+      {/* Completar ticket modal — from main table */}
+      {ticketCompletando && (
+        <CompletarModal
+          ticket={ticketCompletando}
+          onClose={() => setTicketCompletando(null)}
+          onCompletado={() => {
+            setTicketCompletando(null);
+            mostrarExitoMsg('Ticket cerrado correctamente.');
+            cargarDatos();
+          }}
+        />
+      )}
+
       {/* Machine panel */}
       {panelClave && (
         <EquipoPanel
@@ -884,7 +1104,9 @@ export default function Correctivo() {
           tickets={tickets}
           proveedores={proveedores}
           onClose={() => setPanelClave(null)}
-          onCompletar={async (id, clave) => { await completar(id, clave); }}
+          onCompletar={async (id, clave) => {
+            // Panel's completar goes through its own CompletarModal inside EquipoPanel
+          }}
           onCambiarEstatus={async (id, estatus) => { await cambiarEstatus(id, estatus); }}
           onRefresh={() => { cargarDatos(); mostrarExitoMsg('Ticket actualizado correctamente.'); }}
         />
