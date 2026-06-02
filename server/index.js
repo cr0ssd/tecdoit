@@ -2,11 +2,15 @@ require('dotenv').config({ path: __dirname + '/.env' });
 
 const express = require('express');
 const cors = require('cors');
+const { iniciarPlanificador } = require('./services/schedulerService');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Iniciar el programador de tareas (Cron) para alertas de mantenimiento
+iniciarPlanificador();
 
 const mantenimientoRoutes = require('./routes/mantenimientoRoutes');
 const proveedoresRoutes = require('./routes/proveedoresRoutes');
