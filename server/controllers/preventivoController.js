@@ -1,6 +1,7 @@
 // server/controllers/preventivoController.js
 
 const supabase = require('../config/supabaseClient');
+const { enviarAlertaMantenimiento } = require('../services/emailService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LEGACY endpoints — kept intact, still read from `mantenimientos` table.
@@ -22,24 +23,21 @@ async function obtenerPreventivos(req, res) {
 // GET /api/preventivo/calendario
 async function obtenerFechasCalendario(req, res) {
   const { data, error } = await supabase
-    .from('mantenimientos')
-    .select('clave_activo, fecha_programada, descripcion')
-    .eq('tipo_mantenimiento', 'Preventivo')
-    .neq('estatus', 'Completado')
-    .not('fecha_programada', 'is', null)
-    .order('fecha_programada', { ascending: true });
+    .from('preventivo')
+    .select('clave_activo, proxima_fecha')
+    .not('proxima_fecha', 'is', null)
+    .order('proxima_fecha', { ascending: true });
 
   if (error) return res.status(500).json({ error: error.message });
 
   const mapped = data.map(r => ({
-    clave_activo:      r.clave_activo,
-    proxima_fecha:     r.fecha_programada,
-    tipo_requerimiento: r.descripcion,
+    clave_activo:       r.clave_activo,
+    proxima_fecha:      r.proxima_fecha,
+    tipo_requerimiento: 'Preventivo',
   }));
 
   res.json(mapped);
 }
-
 // POST /api/preventivo/legacy  (old create — mantenimientos table)
 async function crearPreventivoLegacy(req, res) {
   const {
@@ -80,6 +78,14 @@ async function crearPreventivoLegacy(req, res) {
     .from('equipos')
     .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
     .eq('clave_activo', clave_activo);
+
+  // Enviar alerta por Mailchimp
+  enviarAlertaMantenimiento({
+    clave_activo,
+    tipo_mantenimiento: 'Preventivo',
+    descripcion,
+    fecha_programada
+  });
 
   res.status(201).json(data);
 }
@@ -156,6 +162,15 @@ async function crearConfig(req, res) {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+
+  // Enviar alerta de nueva configuración/mantenimiento preventivo programado
+  enviarAlertaMantenimiento({
+    clave_activo,
+    tipo_mantenimiento: 'Preventivo (Configuración)',
+    descripcion: `Nueva configuración de mantenimiento preventivo cada ${intervalo_dias} días.`,
+    fecha_programada: proxima_fecha
+  });
+
   res.status(201).json(data);
 }
 

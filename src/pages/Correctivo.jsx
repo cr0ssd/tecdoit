@@ -556,6 +556,9 @@ const ESTATUS_CONFIG = {
   'Abierto':     { bg: '#fef5e7', color: '#f39c12' },
   'En progreso': { bg: '#e8f4fd', color: '#2980b9' },
   'Completado':  { bg: '#eafaf1', color: '#27ae60' },
+  'Abierto':     { bg: '#fef5e7', color: '#f39c12' },
+  'En progreso': { bg: '#e8f4fd', color: '#2980b9' },
+  'Completado':  { bg: '#eafaf1', color: '#27ae60' },
 };
 
 function formatFecha(iso) {
@@ -564,6 +567,7 @@ function formatFecha(iso) {
 }
 function formatFechaHora(iso) {
   if (!iso) return '—';
+  return new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
   return new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 function formatMoneda(val) {
@@ -657,11 +661,14 @@ function TicketDetalle({ ticket, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" style={{ maxWidth: '560px', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-content" style={{ maxWidth: '560px', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '14px' }}>
           <div>
             <h2 style={{ fontSize: '18px', color: '#2c3e50', marginBottom: '4px' }}>Ticket #{ticket.id_mantenimiento}</h2>
+            <h2 style={{ fontSize: '18px', color: '#2c3e50', marginBottom: '4px' }}>Ticket #{ticket.id_mantenimiento}</h2>
             <span style={{ fontSize: '13px', color: '#7f8c8d' }}>{ticket.clave_activo} — {ticket.equipos?.marca} {ticket.equipos?.modelo}</span>
           </div>
+          <span style={{ padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: estConf.bg, color: estConf.color, whiteSpace: 'nowrap', marginLeft: '12px' }}>{ticket.estatus}</span>
           <span style={{ padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', backgroundColor: estConf.bg, color: estConf.color, whiteSpace: 'nowrap', marginLeft: '12px' }}>{ticket.estatus}</span>
         </div>
         <div style={{ marginBottom: '16px' }}>
@@ -686,8 +693,10 @@ function TicketDetalle({ ticket, onClose }) {
           <div style={{ marginBottom: '16px' }}>
             <div style={{ fontSize: '11px', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Causa de la falla</div>
             <div style={{ padding: '12px 14px', backgroundColor: '#fef5e7', borderRadius: '6px', fontSize: '14px', color: '#2c3e50', lineHeight: '1.5', borderLeft: '3px solid #f39c12' }}>{ticket.causa_falla}</div>
+            <div style={{ padding: '12px 14px', backgroundColor: '#fef5e7', borderRadius: '6px', fontSize: '14px', color: '#2c3e50', lineHeight: '1.5', borderLeft: '3px solid #f39c12' }}>{ticket.causa_falla}</div>
           </div>
         )}
+        <div style={{ marginBottom: ticket.accion_correctiva ? '16px' : '20px' }}>
         <div style={{ marginBottom: ticket.accion_correctiva ? '16px' : '20px' }}>
           <div style={{ fontSize: '11px', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Descripción de la falla</div>
           <div style={{ padding: '12px 14px', backgroundColor: '#f8f9fa', borderRadius: '6px', fontSize: '14px', color: '#2c3e50', lineHeight: '1.5' }}>{ticket.descripcion}</div>
@@ -702,7 +711,11 @@ function TicketDetalle({ ticket, onClose }) {
         <div style={{ marginBottom: '20px' }}>
           <div style={{ fontSize: '11px', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>Línea de tiempo</div>
           <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
             {[
+              { label: 'Reportado',   activo: true },
+              { label: 'En progreso', activo: ticket.estatus !== 'Abierto' },
+              { label: 'Completado',  activo: ticket.estatus === 'Completado' },
               { label: 'Reportado',   activo: true },
               { label: 'En progreso', activo: ticket.estatus !== 'Abierto' },
               { label: 'Completado',  activo: ticket.estatus === 'Completado' },
@@ -726,6 +739,7 @@ function TicketDetalle({ ticket, onClose }) {
 }
 
 // ── TicketEditar ───────────────────────────────────────────────────────────────
+// ── TicketEditar ───────────────────────────────────────────────────────────────
 function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
   const [form, setForm] = useState({
     descripcion:       ticket.descripcion      || '',
@@ -737,19 +751,26 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
     estatus:           ticket.estatus          || 'Abierto',
   });
   const [guardando, setGuardando] = useState(false);
-  const [error, setError]         = useState(null);
+  const [error,     setError]     = useState(null);
 
+  function handleInput(e) { const { name, value } = e.target; setForm(prev => ({ ...prev, [name]: value })); }
   function handleInput(e) { const { name, value } = e.target; setForm(prev => ({ ...prev, [name]: value })); }
 
   async function guardar(e) {
+    e.preventDefault(); setGuardando(true); setError(null);
     e.preventDefault(); setGuardando(true); setError(null);
     try {
       const res = await fetch(`${API_URL}/correctivo/${ticket.id_mantenimiento}/editar`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ descripcion: form.descripcion, causa_falla: form.causa_falla || null, prioridad: form.prioridad ?? 0, id_proveedor: form.id_proveedor || null, fecha_programada: form.fecha_programada || null, costo: form.costo || 0, estatus: form.estatus }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descripcion: form.descripcion, causa_falla: form.causa_falla || null, prioridad: form.prioridad ?? 0, id_proveedor: form.id_proveedor || null, fecha_programada: form.fecha_programada || null, costo: form.costo || 0, estatus: form.estatus }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Error al guardar'); }
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Error al guardar'); }
       onGuardado();
+    } catch (err) { setError(err.message); }
+    finally { setGuardando(false); }
     } catch (err) { setError(err.message); }
     finally { setGuardando(false); }
   }
@@ -760,14 +781,21 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
         <h2 style={{ marginBottom: '6px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>Editar Ticket #{ticket.id_mantenimiento}</h2>
         <p style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '20px' }}>{ticket.clave_activo} — {ticket.equipos?.marca} {ticket.equipos?.modelo}</p>
         {error && <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>{error}</div>}
+      <div className="modal-content" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ marginBottom: '6px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>Editar Ticket #{ticket.id_mantenimiento}</h2>
+        <p style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '20px' }}>{ticket.clave_activo} — {ticket.equipos?.marca} {ticket.equipos?.modelo}</p>
+        {error && <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>{error}</div>}
         <form onSubmit={guardar}>
           <div className="form-group">
             <label>Descripción de la falla</label>
             <textarea name="descripcion" value={form.descripcion} onChange={handleInput} required rows={3}
               style={{ padding: '10px', border: '1px solid #bdc3c7', borderRadius: '6px', fontSize: '14px', resize: 'vertical', width: '100%' }} />
+            <textarea name="descripcion" value={form.descripcion} onChange={handleInput} required rows={3}
+              style={{ padding: '10px', border: '1px solid #bdc3c7', borderRadius: '6px', fontSize: '14px', resize: 'vertical', width: '100%' }} />
           </div>
           <div className="form-group">
             <label>Causa de la falla</label>
+            <input type="text" name="causa_falla" value={form.causa_falla} onChange={handleInput} placeholder="Ej. Sobrecalentamiento, cortocircuito..." />
             <input type="text" name="causa_falla" value={form.causa_falla} onChange={handleInput} placeholder="Ej. Sobrecalentamiento, cortocircuito..." />
           </div>
           <PrioridadSelector value={form.prioridad} onChange={val => setForm(prev => ({ ...prev, prioridad: val }))} />
@@ -783,6 +811,7 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
             <select name="id_proveedor" value={form.id_proveedor} onChange={handleInput}>
               <option value="">Resolución interna</option>
               {proveedores.map(p => <option key={p.id_proveedor} value={p.id_proveedor}>{p.nombre}{p.es_preferido ? ' ⭐' : ''}</option>)}
+              {proveedores.map(p => <option key={p.id_proveedor} value={p.id_proveedor}>{p.nombre}{p.es_preferido ? ' ⭐' : ''}</option>)}
             </select>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
@@ -797,6 +826,7 @@ function TicketEditar({ ticket, proveedores, onClose, onGuardado }) {
           </div>
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose} disabled={guardando}>Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={guardando}>{guardando ? 'Procesando...' : 'Aplicar Modificaciones'}</button>
             <button type="submit" className="btn-primary" disabled={guardando}>{guardando ? 'Procesando...' : 'Aplicar Modificaciones'}</button>
           </div>
         </form>
@@ -847,7 +877,10 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCambiarEstatus, o
               <h2 style={{ fontSize: '18px', margin: 0, marginBottom: '4px' }}>{clave}</h2>
               {equipoInfo && <p style={{ fontSize: '13px', color: '#bdc3c7', margin: 0 }}>{equipoInfo.marca} {equipoInfo.modelo}</p>}
               {labInfo    && <p style={{ fontSize: '12px', color: '#95a5a6', margin: '2px 0 0' }}>📍 {labInfo.nombre}</p>}
+              {equipoInfo && <p style={{ fontSize: '13px', color: '#bdc3c7', margin: 0 }}>{equipoInfo.marca} {equipoInfo.modelo}</p>}
+              {labInfo    && <p style={{ fontSize: '12px', color: '#95a5a6', margin: '2px 0 0' }}>📍 {labInfo.nombre}</p>}
             </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#bdc3c7', cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '0' }}>✕</button>
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#bdc3c7', cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '0' }}>✕</button>
           </div>
 
@@ -912,13 +945,50 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCambiarEstatus, o
           </div>
         </div>
 
-        {/* Scrollable content */}
+          {/* Export button */}
+          <div style={{ marginTop: '14px' }}>
+            {exportError && (
+              <div style={{ fontSize: '11px', color: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.15)', padding: '5px 8px', borderRadius: '4px', marginBottom: '8px' }}>
+                {exportError}
+              </div>
+            )}
+            <button onClick={handleExportar} disabled={exportando} style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              padding: '9px 16px', borderRadius: '6px', cursor: exportando ? 'not-allowed' : 'pointer',
+              fontSize: '13px', fontWeight: '600',
+              backgroundColor: exportando ? 'rgba(52,152,219,0.2)' : 'rgba(52,152,219,0.15)',
+              color: exportando ? '#7f8c8d' : '#3498db',
+              border: '1px solid rgba(52,152,219,0.4)', transition: 'all 0.2s ease',
+            }}>
+              {exportando ? (
+                <>
+                  <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #3498db', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                  Generando PDF...
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Exportar Reporte PDF
+                </>
+              )}
+            </button>
+            <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
 
           {/* Active tickets */}
           <div style={{ marginBottom: '28px' }}>
             <h3 style={{ fontSize: '13px', fontWeight: '700', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Tickets activos</h3>
+            <h3 style={{ fontSize: '13px', fontWeight: '700', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Tickets activos</h3>
             {activos.length === 0 ? (
+              <div style={{ padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px', textAlign: 'center', fontSize: '13px', color: '#7f8c8d' }}>Sin tickets activos</div>
               <div style={{ padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px', textAlign: 'center', fontSize: '13px', color: '#7f8c8d' }}>Sin tickets activos</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -926,11 +996,14 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCambiarEstatus, o
                   const estConf = ESTATUS_CONFIG[t.estatus] || ESTATUS_CONFIG['Abierto'];
                   return (
                     <div key={t.id_mantenimiento} style={{ padding: '14px 16px', border: '1px solid #ecf0f1', borderRadius: '8px', borderLeft: `3px solid ${estConf.color}`, backgroundColor: '#fafafa' }}>
+                    <div key={t.id_mantenimiento} style={{ padding: '14px 16px', border: '1px solid #ecf0f1', borderRadius: '8px', borderLeft: `3px solid ${estConf.color}`, backgroundColor: '#fafafa' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                         <span style={{ fontSize: '12px', fontWeight: '700', color: '#7f8c8d' }}>#{t.id_mantenimiento}</span>
                         <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', backgroundColor: estConf.bg, color: estConf.color }}>{t.estatus}</span>
+                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', backgroundColor: estConf.bg, color: estConf.color }}>{t.estatus}</span>
                       </div>
                       <p style={{ fontSize: '13px', color: '#2c3e50', margin: '0 0 4px 0', lineHeight: '1.4' }}>{t.descripcion}</p>
+                      {t.causa_falla && <p style={{ fontSize: '12px', color: '#e67e22', margin: '0 0 8px 0' }}>⚠ {t.causa_falla}</p>}
                       {t.causa_falla && <p style={{ fontSize: '12px', color: '#e67e22', margin: '0 0 8px 0' }}>⚠ {t.causa_falla}</p>}
                       <div style={{ marginBottom: '6px' }}><PrioridadBadge value={t.prioridad || 0} /></div>
                       <div style={{ fontSize: '12px', color: '#7f8c8d', marginBottom: '10px' }}>
@@ -939,9 +1012,13 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCambiarEstatus, o
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         <button className="btn-icon" style={{ fontSize: '11px' }} onClick={() => setTicketInspectado(t)}>🔍 Inspeccionar</button>
                         <button className="btn-icon" style={{ borderColor: '#f39c12', color: '#f39c12', fontSize: '11px' }} onClick={() => setTicketEditado(t)}>✏️ Editar</button>
+                        <button className="btn-icon" style={{ fontSize: '11px' }} onClick={() => setTicketInspectado(t)}>🔍 Inspeccionar</button>
+                        <button className="btn-icon" style={{ borderColor: '#f39c12', color: '#f39c12', fontSize: '11px' }} onClick={() => setTicketEditado(t)}>✏️ Editar</button>
                         {t.estatus === 'Abierto' && (
                           <button className="btn-icon" style={{ borderColor: '#2980b9', color: '#2980b9', fontSize: '11px' }} onClick={() => onCambiarEstatus(t.id_mantenimiento, 'En progreso')}>▶ En progreso</button>
+                          <button className="btn-icon" style={{ borderColor: '#2980b9', color: '#2980b9', fontSize: '11px' }} onClick={() => onCambiarEstatus(t.id_mantenimiento, 'En progreso')}>▶ En progreso</button>
                         )}
+                        <button className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60', fontSize: '11px' }} onClick={() => setTicketCompletando(t)}>✓ Completar</button>
                         <button className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60', fontSize: '11px' }} onClick={() => setTicketCompletando(t)}>✓ Completar</button>
                       </div>
                     </div>
@@ -954,7 +1031,9 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCambiarEstatus, o
           {/* History */}
           <div>
             <h3 style={{ fontSize: '13px', fontWeight: '700', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Historial completados</h3>
+            <h3 style={{ fontSize: '13px', fontWeight: '700', color: '#7f8c8d', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Historial completados</h3>
             {historial.length === 0 ? (
+              <div style={{ padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px', textAlign: 'center', fontSize: '13px', color: '#7f8c8d' }}>Sin historial de tickets completados</div>
               <div style={{ padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px', textAlign: 'center', fontSize: '13px', color: '#7f8c8d' }}>Sin historial de tickets completados</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -991,8 +1070,16 @@ function EquipoPanel({ clave, tickets, proveedores, onClose, onCambiarEstatus, o
   );
 }
 
-// ── Main Correctivo page ───────────────────────────────────────────────────────
+// ── Main page ──────────────────────────────────────────────────────────────────
 export default function Correctivo() {
+  const [tickets,       setTickets]       = useState([]);
+  const [equipos,       setEquipos]       = useState([]);
+  const [proveedores,   setProveedores]   = useState([]);
+  const [laboratorios,  setLaboratorios]  = useState([]);
+  const [filtroLab,     setFiltroLab]     = useState('');
+  const [cargando,      setCargando]      = useState(true);
+  const [error,         setError]         = useState(null);
+  const [mensajeExito,  setMensajeExito]  = useState(null);
   const [tickets,       setTickets]       = useState([]);
   const [equipos,       setEquipos]       = useState([]);
   const [proveedores,   setProveedores]   = useState([]);
@@ -1015,6 +1102,7 @@ export default function Correctivo() {
 
   async function cargarDatos() {
     setCargando(true); setError(null);
+    setCargando(true); setError(null);
     try {
       const [dataTickets, dataEq, dataProv, dataLabs] = await Promise.all([
         fetch(`${API_URL}/correctivo`).then(r => r.json()),
@@ -1023,8 +1111,10 @@ export default function Correctivo() {
         inventarioAPI.obtenerLaboratorios(),
       ]);
       setTickets(dataTickets); setEquipos(dataEq); setProveedores(dataProv); setLaboratorios(dataLabs);
+      setTickets(dataTickets); setEquipos(dataEq); setProveedores(dataProv); setLaboratorios(dataLabs);
     } catch (err) {
       setError('No se pudo cargar la información. Verifica que el backend esté corriendo.');
+    } finally { setCargando(false); }
     } finally { setCargando(false); }
   }
 
@@ -1037,11 +1127,18 @@ export default function Correctivo() {
 
   async function crearTicket(e) {
     e.preventDefault(); setGuardando(true); setError(null);
+    e.preventDefault(); setGuardando(true); setError(null);
     try {
       const res = await fetch(`${API_URL}/correctivo`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clave_activo: form.clave_activo, descripcion: form.descripcion, causa_falla: form.causa_falla || null, prioridad: form.prioridad || 0, id_proveedor: form.id_proveedor || null, fecha_programada: form.fecha_programada || null, costo: form.costo || 0 }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave_activo: form.clave_activo, descripcion: form.descripcion, causa_falla: form.causa_falla || null, prioridad: form.prioridad || 0, id_proveedor: form.id_proveedor || null, fecha_programada: form.fecha_programada || null, costo: form.costo || 0 }),
       });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Error al crear ticket'); }
+      setMostrarModal(false); mostrarExitoMsg('Ticket correctivo registrado correctamente.'); cargarDatos();
+    } catch (err) { setError(err.message); }
+    finally { setGuardando(false); }
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Error al crear ticket'); }
       setMostrarModal(false); mostrarExitoMsg('Ticket correctivo registrado correctamente.'); cargarDatos();
     } catch (err) { setError(err.message); }
@@ -1050,6 +1147,7 @@ export default function Correctivo() {
 
   async function cambiarEstatus(id, estatus) {
     try {
+      const res = await fetch(`${API_URL}/correctivo/${id}/estatus`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estatus }) });
       const res = await fetch(`${API_URL}/correctivo/${id}/estatus`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estatus }) });
       if (!res.ok) throw new Error('Error al actualizar estatus');
       await cargarDatos();
@@ -1074,13 +1172,12 @@ export default function Correctivo() {
   return (
     <div className="dashboard-container">
       <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1>Mantenimiento Correctivo</h1>
-          <p>Registro y seguimiento de fallas y tickets de reparación</p>
-        </div>
+        <div><h1>Mantenimiento Correctivo</h1><p>Registro y seguimiento de fallas y tickets de reparación</p></div>
         <button className="btn-primary" onClick={abrirModal}>+ Nuevo Ticket</button>
       </header>
 
+      {error && !mostrarModal && <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>{error}</div>}
+      {mensajeExito && <div style={{ backgroundColor: '#eafaf1', color: '#27ae60', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>{mensajeExito}</div>}
       {error && !mostrarModal && <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>{error}</div>}
       {mensajeExito && <div style={{ backgroundColor: '#eafaf1', color: '#27ae60', padding: '12px 16px', borderRadius: '6px', fontSize: '14px' }}>{mensajeExito}</div>}
 
@@ -1089,12 +1186,18 @@ export default function Correctivo() {
         <div className="kpi-card"><h3>En Progreso</h3><p className="kpi-number" style={{ color: '#2980b9' }}>{enProgreso}</p><span className="kpi-status info">En atención activa</span></div>
         <div className="kpi-card"><h3>Completados</h3><p className="kpi-number" style={{ color: '#27ae60' }}>{completados}</p><span className="kpi-status ok">Histórico total</span></div>
         <div className="kpi-card"><h3>Costo Acumulado</h3><p className="kpi-number" style={{ fontSize: '22px' }}>{formatMoneda(costoTotal)}</p><span className="kpi-status info">Servicios correctivos</span></div>
+        <div className="kpi-card"><h3>Tickets Abiertos</h3><p className="kpi-number warning-text">{abiertos}</p><span className="kpi-status warning">Pendientes de atención</span></div>
+        <div className="kpi-card"><h3>En Progreso</h3><p className="kpi-number" style={{ color: '#2980b9' }}>{enProgreso}</p><span className="kpi-status info">En atención activa</span></div>
+        <div className="kpi-card"><h3>Completados</h3><p className="kpi-number" style={{ color: '#27ae60' }}>{completados}</p><span className="kpi-status ok">Histórico total</span></div>
+        <div className="kpi-card"><h3>Costo Acumulado</h3><p className="kpi-number" style={{ fontSize: '22px' }}>{formatMoneda(costoTotal)}</p><span className="kpi-status info">Servicios correctivos</span></div>
       </section>
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="text" placeholder="Buscar por clave o descripción..." className="input-search" style={{ minWidth: '260px' }} value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+        <input type="text" placeholder="Buscar por clave o descripción..." className="input-search" style={{ minWidth: '260px' }} value={busqueda} onChange={e => setBusqueda(e.target.value)} />
         <select className="select-filter" value={filtroLab} onChange={e => setFiltroLab(e.target.value)}>
           <option value="">Todos los laboratorios</option>
+          {laboratorios.map(l => <option key={l.id_laboratorio} value={l.id_laboratorio}>{l.nombre}</option>)}
           {laboratorios.map(l => <option key={l.id_laboratorio} value={l.id_laboratorio}>{l.nombre}</option>)}
         </select>
         <select className="select-filter" value={filtroEstatus} onChange={e => setFiltroEstatus(e.target.value)}>
@@ -1105,6 +1208,7 @@ export default function Correctivo() {
         </select>
         <select className="select-filter" value={filtroClave} onChange={e => setFiltroClave(e.target.value)}>
           <option value="">Todos los equipos</option>
+          {[...new Set(tickets.map(t => t.clave_activo))].map(c => <option key={c} value={c}>{c}</option>)}
           {[...new Set(tickets.map(t => t.clave_activo))].map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
@@ -1130,8 +1234,10 @@ export default function Correctivo() {
                   <tr key={t.id_mantenimiento}>
                     <td><span style={{ fontSize: '12px', fontWeight: '700', color: '#7f8c8d' }}>#{t.id_mantenimiento}</span></td>
                     <td><strong>{t.clave_activo}</strong><br /><small style={{ color: '#7f8c8d' }}>{t.equipos?.marca} {t.equipos?.modelo}</small></td>
+                    <td><strong>{t.clave_activo}</strong><br /><small style={{ color: '#7f8c8d' }}>{t.equipos?.marca} {t.equipos?.modelo}</small></td>
                     <td style={{ maxWidth: '200px' }}>
                       <span style={{ fontSize: '13px' }}>{t.descripcion}</span>
+                      {t.estatus === 'Completado' && t.accion_correctiva && <div style={{ fontSize: '11px', color: '#27ae60', marginTop: '3px', fontStyle: 'italic' }}>✓ Acción registrada</div>}
                       {t.estatus === 'Completado' && t.accion_correctiva && <div style={{ fontSize: '11px', color: '#27ae60', marginTop: '3px', fontStyle: 'italic' }}>✓ Acción registrada</div>}
                     </td>
                     <td>{t.proveedores?.nombre || 'Resolución interna'}</td>
@@ -1139,8 +1245,12 @@ export default function Correctivo() {
                     <td>{formatMoneda(t.costo)}</td>
                     <td><PrioridadBadge value={t.prioridad || 0} /></td>
                     <td><span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', backgroundColor: estConf.bg, color: estConf.color }}>{t.estatus}</span></td>
+                    <td><span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', backgroundColor: estConf.bg, color: estConf.color }}>{t.estatus}</span></td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        <button className="btn-icon" style={{ fontSize: '11px' }} onClick={() => setPanelClave(t.clave_activo)}>👁 Ver equipo</button>
+                        {t.estatus === 'Abierto' && <button className="btn-icon" style={{ borderColor: '#2980b9', color: '#2980b9', fontSize: '11px' }} onClick={() => cambiarEstatus(t.id_mantenimiento, 'En progreso')}>▶ En progreso</button>}
+                        {abierto && <button className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60', fontSize: '11px' }} onClick={() => setTicketCompletando(t)}>✓ Completar</button>}
                         <button className="btn-icon" style={{ fontSize: '11px' }} onClick={() => setPanelClave(t.clave_activo)}>👁 Ver equipo</button>
                         {t.estatus === 'Abierto' && <button className="btn-icon" style={{ borderColor: '#2980b9', color: '#2980b9', fontSize: '11px' }} onClick={() => cambiarEstatus(t.id_mantenimiento, 'En progreso')}>▶ En progreso</button>}
                         {abierto && <button className="btn-icon" style={{ borderColor: '#27ae60', color: '#27ae60', fontSize: '11px' }} onClick={() => setTicketCompletando(t)}>✓ Completar</button>}
@@ -1154,10 +1264,11 @@ export default function Correctivo() {
         </table>
       </section>
 
-      {/* Nuevo ticket modal */}
       {mostrarModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '580px' }}>
+            <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>Registrar Ticket Correctivo</h2>
+            {error && <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>{error}</div>}
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>Registrar Ticket Correctivo</h2>
             {error && <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>{error}</div>}
             <form onSubmit={crearTicket}>
@@ -1166,15 +1277,19 @@ export default function Correctivo() {
                 <select name="clave_activo" value={form.clave_activo} onChange={handleInput} required>
                   <option value="">-- Seleccionar equipo --</option>
                   {equipos.map(eq => <option key={eq.clave_activo} value={eq.clave_activo}>{eq.clave_activo} — {eq.marca} {eq.modelo}</option>)}
+                  {equipos.map(eq => <option key={eq.clave_activo} value={eq.clave_activo}>{eq.clave_activo} — {eq.marca} {eq.modelo}</option>)}
                 </select>
               </div>
               <div className="form-group">
                 <label>Descripción de la falla</label>
                 <textarea name="descripcion" value={form.descripcion} onChange={handleInput} required rows={3} placeholder="Describe detalladamente el problema detectado..."
                   style={{ padding: '10px', border: '1px solid #bdc3c7', borderRadius: '6px', fontSize: '14px', resize: 'vertical', width: '100%' }} />
+                <textarea name="descripcion" value={form.descripcion} onChange={handleInput} required rows={3} placeholder="Describe detalladamente el problema detectado..."
+                  style={{ padding: '10px', border: '1px solid #bdc3c7', borderRadius: '6px', fontSize: '14px', resize: 'vertical', width: '100%' }} />
               </div>
               <div className="form-group">
                 <label>Causa de la falla</label>
+                <input type="text" name="causa_falla" value={form.causa_falla} onChange={handleInput} placeholder="Ej. Sobrecalentamiento, cortocircuito, desgaste..." />
                 <input type="text" name="causa_falla" value={form.causa_falla} onChange={handleInput} placeholder="Ej. Sobrecalentamiento, cortocircuito, desgaste..." />
               </div>
               <PrioridadSelector value={form.prioridad} onChange={val => setForm(prev => ({ ...prev, prioridad: val }))} />
@@ -1182,6 +1297,7 @@ export default function Correctivo() {
                 <label>Proveedor asignado (opcional)</label>
                 <select name="id_proveedor" value={form.id_proveedor} onChange={handleInput}>
                   <option value="">Resolución interna</option>
+                  {proveedores.map(p => <option key={p.id_proveedor} value={p.id_proveedor}>{p.nombre}{p.es_preferido ? ' ⭐' : ''}</option>)}
                   {proveedores.map(p => <option key={p.id_proveedor} value={p.id_proveedor}>{p.nombre}{p.es_preferido ? ' ⭐' : ''}</option>)}
                 </select>
               </div>
@@ -1191,6 +1307,7 @@ export default function Correctivo() {
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={guardando}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={guardando}>{guardando ? 'Procesando...' : 'Crear Ticket'}</button>
                 <button type="submit" className="btn-primary" disabled={guardando}>{guardando ? 'Procesando...' : 'Crear Ticket'}</button>
               </div>
             </form>
@@ -1203,15 +1320,16 @@ export default function Correctivo() {
           onCompletado={() => { setTicketCompletando(null); mostrarExitoMsg('Ticket cerrado correctamente.'); cargarDatos(); }} />
       )}
 
+      {ticketCompletando && (
+        <CompletarModal ticket={ticketCompletando} onClose={() => setTicketCompletando(null)}
+          onCompletado={() => { setTicketCompletando(null); mostrarExitoMsg('Ticket cerrado correctamente.'); cargarDatos(); }} />
+      )}
+
       {panelClave && (
-        <EquipoPanel
-          clave={panelClave}
-          tickets={tickets}
-          proveedores={proveedores}
+        <EquipoPanel clave={panelClave} tickets={tickets} proveedores={proveedores}
           onClose={() => setPanelClave(null)}
           onCambiarEstatus={async (id, estatus) => { await cambiarEstatus(id, estatus); }}
-          onRefresh={() => { cargarDatos(); mostrarExitoMsg('Ticket actualizado correctamente.'); }}
-        />
+          onRefresh={() => { cargarDatos(); mostrarExitoMsg('Ticket actualizado correctamente.'); }} />
       )}
     </div>
   );

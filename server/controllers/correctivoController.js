@@ -3,6 +3,7 @@
 // filtered by tipo_mantenimiento = 'Correctivo'
 
 const supabase = require('../config/supabaseClient');
+const { enviarAlertaMantenimiento } = require('../services/emailService');
 
 // GET all correctivo tickets
 async function obtenerTickets(req, res) {
@@ -69,6 +70,14 @@ async function crearTicket(req, res) {
     .from('equipos')
     .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
     .eq('clave_activo', clave_activo);
+
+  // Enviar alerta por Mailchimp
+  enviarAlertaMantenimiento({
+    clave_activo,
+    tipo_mantenimiento: 'Correctivo',
+    descripcion,
+    fecha_programada
+  });
 
   res.status(201).json(data);
 }

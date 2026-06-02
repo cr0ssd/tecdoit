@@ -1,4 +1,5 @@
 const supabase = require('../config/supabaseClient');
+const { enviarAlertaMantenimiento } = require('../services/emailService');
 
 // Obtener todos los mantenimientos
 const obtenerMantenimientos = async (req, res) => {
@@ -55,6 +56,14 @@ const crearMantenimiento = async (req, res) => {
       .eq('clave_activo', clave_activo);
 
     if (errorUpdate) throw errorUpdate;
+
+    // 3. Enviar alerta por Mailchimp (asíncrono, no bloqueante para la respuesta)
+    enviarAlertaMantenimiento({
+      clave_activo,
+      tipo_mantenimiento,
+      descripcion,
+      fecha_programada
+    });
 
     res.status(201).json({ mensaje: 'Servicio registrado y estatus de equipo actualizado.' });
   } catch (error) {
