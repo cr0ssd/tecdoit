@@ -26,17 +26,21 @@ function diasHasta(fecha) {
 }
 
 // En Mantenimiento and Vencido are parallel states:
-//   - en_mantenimiento=true, dias=0  → En Mantenimiento only
-//   - en_mantenimiento=true, dias<0  → En Mantenimiento + Vencido
-// Returns { esEnMantenimiento, esVencido, diasVencido }
+//   - dias === 0       → En Mantenimiento only (due today)
+//   - dias < 0         → En Mantenimiento + Vencido (overdue)
+// The DB flag en_mantenimiento is also respected (set by trigger on writes)
+// but we derive state locally too so the UI is correct on page load
+// without needing a write to fire the trigger.
 function calcularEstado(config) {
   const dias = diasHasta(config.proxima_fecha);
-  const esEnMantenimiento = !!config.en_mantenimiento;
+  // Active if DB flag is set OR if the due date has arrived (dias <= 0)
+  const esEnMantenimiento = !!config.en_mantenimiento || (dias !== null && dias <= 0);
   const esVencido = esEnMantenimiento && dias !== null && dias < 0;
   const diasVencido = esVencido ? Math.abs(dias) : 0;
   return { esEnMantenimiento, esVencido, diasVencido, dias };
 }
 
+// Always adds days from today — next cycle is always today + intervalo.
 function addDays(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -161,13 +165,6 @@ function EstadoBadges({ config }) {
   }
   if (dias === null) {
     return <span className="badge ok">Sin fecha</span>;
-  }
-  if (dias === 0) {
-    return <span className="badge warning">Vence hoy</span>;
-  }
-  if (dias < 0) {
-    // Shouldn't happen without en_mantenimiento but defensive fallback
-    return <span className="badge danger">Vencido hace {Math.abs(dias)} días</span>;
   }
   if (dias <= 7) {
     return <span className="badge warning">En {dias} días</span>;
@@ -434,7 +431,6 @@ export default function Preventivo() {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          proxima_fecha:    nuevaProxima,
           ultima_ejecucion: ultimaEjecucion,
           tareas_resultado: tareasCompletando.map(t => ({ texto: t.texto, estado: t.estado })),
         }),
