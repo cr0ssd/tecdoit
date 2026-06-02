@@ -213,15 +213,16 @@ async function eliminarConfig(req, res) {
 // Body: { proxima_fecha, ultima_ejecucion, tareas_resultado[] }
 async function completarConfig(req, res) {
   const { clave } = req.params;
-  const { proxima_fecha, ultima_ejecucion, tareas_resultado } = req.body;
+  const { ultima_ejecucion, tareas_resultado } = req.body;
 
-  if (!proxima_fecha || !ultima_ejecucion) {
-    return res.status(400).json({ error: 'proxima_fecha y ultima_ejecucion son requeridos.' });
+  // proxima_fecha is derived inside the RPC from proxima_fecha + intervalo_dias
+  // so completing late still gives the full period from the original due date.
+  if (!ultima_ejecucion) {
+    return res.status(400).json({ error: 'ultima_ejecucion es requerido.' });
   }
 
   const { error } = await supabase.rpc('completar_preventivo', {
     p_clave_activo:     clave,
-    p_proxima_fecha:    proxima_fecha,
     p_ultima_ejecucion: ultima_ejecucion,
     p_tareas_resultado: tareas_resultado || [],
   });
