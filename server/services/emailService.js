@@ -1,6 +1,6 @@
 
+const { Resend } = require('resend');
 const supabase = require('../config/supabaseClient');
-
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Envía un correo de alerta de mantenimiento a todos los usuarios con alertas activas. @param {Object} mantenimiento - Datos del mantenimiento.
