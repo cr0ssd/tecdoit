@@ -1,6 +1,7 @@
 // server/controllers/preventivoController.js
 
 const supabase = require('../config/supabaseClient');
+const { enviarAlertaMantenimiento } = require('../services/emailService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LEGACY endpoints — kept intact, still read from `mantenimientos` table.
@@ -78,6 +79,14 @@ async function crearPreventivoLegacy(req, res) {
     .update({ estatus: 'En Mantenimiento', horas_acumuladas: 0, mantenimiento_urgente: false })
     .eq('clave_activo', clave_activo);
 
+  // Enviar alerta por Mailchimp
+  enviarAlertaMantenimiento({
+    clave_activo,
+    tipo_mantenimiento: 'Preventivo',
+    descripcion,
+    fecha_programada
+  });
+
   res.status(201).json(data);
 }
 
@@ -153,6 +162,15 @@ async function crearConfig(req, res) {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+
+  // Enviar alerta de nueva configuración/mantenimiento preventivo programado
+  enviarAlertaMantenimiento({
+    clave_activo,
+    tipo_mantenimiento: 'Preventivo (Configuración)',
+    descripcion: `Nueva configuración de mantenimiento preventivo cada ${intervalo_dias} días.`,
+    fecha_programada: proxima_fecha
+  });
+
   res.status(201).json(data);
 }
 
