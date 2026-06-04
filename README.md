@@ -1,72 +1,101 @@
-# tecdoit - Sistema Centralizado de Gestión de Laboratorios
+# tecdoit - Sistema Integral de Gestión de Laboratorios
 
-Bienvenido al repositorio oficial de **tecdoit**, desarrollado por el equipo Zarzilla Games. Este sistema está diseñado para optimizar el control de inventarios, automatizar los mantenimientos preventivos y facilitar la toma de decisiones financieras (CAPEX) en la red de laboratorios mediante un entorno web escalable.
+Bienvenido al repositorio oficial de **tecdoit**, una plataforma robusta diseñada para la optimización, control y mantenimiento de activos en redes de laboratorios. Este sistema facilita la gestión técnica y operativa, automatizando procesos críticos y proporcionando herramientas analíticas para la toma de decisiones financieras (CAPEX).
 
-## Stack Tecnológico
-* **Frontend:** React.js (Vite)
-* **Backend y Base de Datos:** Supabase (PostgreSQL)
-* **Gráficas y Analítica:** Recharts
-* **Lectura de Hardware:** React QR Scanner
+## 🚀 Propósito del Proyecto
+**tecdoit** centraliza la operación de laboratorios mediante un ecosistema digital que integra el seguimiento de inventarios en tiempo real, la automatización de mantenimientos preventivos y correctivos, y el monitoreo de uso de equipos mediante tecnologías de lectura rápida (QR).
 
-## Módulos Principales del Sistema
+## 🛠️ Stack Tecnológico
 
-Actualmente, el sistema se divide en cuatro módulos críticos con responsabilidades únicas (Separation of Concerns):
+### Frontend (Interfaces de Usuario)
+* **Framework:** React.js (Vite)
+* **Enrutamiento:** React Router 7
+* **Visualización de Datos:** Recharts (Analítica financiera y operativa)
+* **Reportes:** jsPDF + AutoTable (Generación de fichas técnicas en PDF)
+* **Hardware:** React QR Scanner (Gestión de préstamos y uso)
+* **Estilos:** CSS3 Moderno (Diseño responsivo y profesional)
 
-1. **Dashboard (Panel Analítico):**
-   * Calcula el presupuesto en tiempo real restando la inversión (equipos) y los gastos operativos (mantenimientos) del fondo global (Regla de los 5 segundos).
-   * Contiene el **Centro de Notificaciones**, el cual intercepta alertas dinámicas por límite de horas o urgencia, y alertas estáticas del servidor. Posee redirección inteligente hacia el módulo de mantenimiento.
+### Backend (Lógica de Negocio y Automatización)
+* **Servidor:** Node.js + Express.js
+* **Base de Datos:** Supabase (PostgreSQL con Row-Level Security)
+* **Automatización:** node-cron (Escaneo diario de mantenimientos programados)
+* **Comunicaciones:** Resend API (Alertas automáticas por correo electrónico)
 
-2. **Inventario:**
-   * Operaciones CRUD (Crear, Leer, Actualizar, Eliminar) para los activos.
-   * Integración con Supabase Storage para alojamiento de fotografías.
-   * Manejo de umbrales operativos (límite de horas de uso opcional por activo).
+## 📦 Módulos Principales
 
-3. **Mantenimiento:**
-   * Registro de servicios preventivos y correctivos.
-   * Vinculación de proveedores, costos estimados y fechas programadas.
-   * Al "Completar" un servicio, el sistema restablece automáticamente los contadores operativos del equipo a cero para limpiar las alertas del Dashboard.
+### 1. Panel de Control (Dashboard Analítico)
+* **Cálculo de CAPEX:** Monitoreo en tiempo real del presupuesto global, restando inversiones en activos y gastos operativos.
+* **Centro de Notificaciones:** Sistema dinámico que intercepta alertas por umbrales de horas de uso o vencimiento de servicios.
+* **KPIs Operativos:** Visualización clara de equipos activos, en mantenimiento y disponibilidad general.
 
-4. **Uso de Equipos (Módulo QR):**
-   * Automatización de préstamos de hardware en laboratorio mediante lectura de códigos QR para evitar errores tipográficos y agilizar el flujo.
+### 2. Gestión de Inventario
+* **Control de Activos:** CRUD completo de equipos con parámetros técnicos detallados (marca, modelo, laboratorios).
+* **Almacenamiento en la Nube:** Integración con Supabase Storage para el resguardo de evidencias fotográficas.
+* **Umbrales Operativos:** Configuración de límites de horas de uso para disparar mantenimientos preventivos.
 
-## Configuración del Entorno de Desarrollo (Setup)
+### 3. Mantenimiento Preventivo (Cíclico)
+* **Programación Inteligente:** Configuración de periodicidades (7 días hasta 6 meses o personalizados).
+* **Listas de Verificación:** Definición de tareas específicas por equipo para asegurar la calidad del servicio.
+* **Reset Automático:** Al completar un ciclo, el sistema recalcula la próxima fecha y restablece contadores de uso.
 
-Para correr este proyecto en tu máquina local, sigue estos pasos:
+### 4. Mantenimiento Correctivo (Tickets de Falla)
+* **Gestión de Tickets:** Ciclo de vida completo (Abierto -> En Progreso -> Completado).
+* **Análisis de Fallas:** Registro de causas raíz y acciones correctivas aplicadas.
+* **Reportes Técnicos:** Generación instantánea de reportes PDF detallados con el historial de intervenciones y costos asociados.
 
-1. Clona el repositorio e instala las dependencias:
+### 5. Uso de Equipos (Módulo QR)
+* **Préstamos Automatizados:** Registro ágil de entrada/salida de equipos mediante escaneo de códigos QR, eliminando errores de captura manual.
+* **Bitácora de Uso:** Historial transparente de quién y por cuánto tiempo utilizó cada activo.
+
+## ⚙️ Configuración del Entorno (Setup)
+
+### Requisitos Previos
+* Node.js (v18+)
+* Cuenta en Supabase y Resend
+
+### Pasos para la Instalación
+
+1. **Clonar el repositorio e instalar dependencias:**
    ```bash
    npm install
+   # Instalar dependencias del servidor
+   cd server && npm install && cd ..
    ```
 
-2. Crea un archivo oculto llamado `.env` en la raíz del proyecto. **No subas este archivo a GitHub**. Solicita las credenciales al líder técnico. Debe contener la siguiente estructura:
+2. **Variables de Entorno:**
+   Crea un archivo `.env` en la raíz (para el Frontend) y otro en la carpeta `server/` (para el Backend).
+
+   **Frontend (`.env`):**
    ```env
-   VITE_SUPABASE_URL=tu_url_de_supabase_aqui
-   VITE_SUPABASE_ANON_KEY=tu_llave_anonima_aqui
+   VITE_SUPABASE_URL=tu_url_de_supabase
+   VITE_SUPABASE_ANON_KEY=tu_llave_anonima
+   VITE_API_URL=http://localhost:3001/api
    ```
 
-3. Inicia el servidor de desarrollo:
+   **Backend (`server/.env`):**
+   ```env
+   SUPABASE_URL=tu_url_de_supabase
+   SUPABASE_KEY=tu_llave_de_servicio_o_anonima
+   RESEND_API_KEY=tu_api_key_de_resend
+   PORT=3001
+   ```
+
+3. **Ejecución del Sistema:**
+   Inicia ambos servicios para el funcionamiento completo:
    ```bash
+   # Terminal 1: Frontend
    npm run dev
+
+   # Terminal 2: Backend
+   cd server && node index.js
    ```
 
-## Estructura de la Base de Datos
+## 🛡️ Estándares de Ingeniería
 
-El backend en Supabase interactúa principalmente con las siguientes tablas:
-* **equipos:** Catálogo central. Contiene los parámetros `horas_acumuladas` y `limite_horas`.
-* **mantenimientos:** Historial de intervenciones técnicas y costos asociados.
-* **registro_uso:** Bitácora de préstamos mediante QR.
-* **presupuesto_global:** Tabla de un solo registro para el cálculo del CAPEX.
-* **post1** y **author1:** Tablas dedicadas exclusivamente al control e historial del sistema de notificaciones y alertas.
-
-## Estándares y Reglas para el Equipo (Zarzilla Games)
-
-Para mantener la calidad del código, por favor respeten los siguientes principios acordados durante la fase de diseño:
-
-* **KISS (Keep It Simple, Stupid):** No compliquen las consultas SQL. El cálculo financiero se hace mediante sumatorias directas en el frontend para no sobrecargar el servidor.
-* **SRP (Single Responsibility Principle):** Si necesitan crear una nueva conexión a base de datos, utilicen estrictamente el archivo centralizado `services/supabase.js`. No escriban credenciales en los componentes.
-* **Seguridad (RLS):** La base de datos tiene políticas de Row-Level Security activas. Las inserciones directas fallarán si intentan manipular la base de datos sin estar autenticados.
-* **Estado de UI Optimista:** Al marcar una notificación como leída o completar un mantenimiento, actualicen primero el estado local (React state) para que el usuario perciba rapidez, y luego ejecuten la petición a Supabase en segundo plano.
+* **Seguridad:** Uso estricto de Row-Level Security (RLS) en Supabase.
+* **Mantenibilidad:** Arquitectura modular con separación clara entre lógica de API y componentes de interfaz.
+* **Experiencia de Usuario:** Implementación de "Estado Optimista" para transiciones fluidas en el Dashboard y Mantenimiento.
 
 ---
-*Documentación mantenida por la dirección técnica de Zarzilla Games. Última actualización: Sprint de Notificaciones y Mantenimiento.*
+*Documentación oficial mantenida por el equipo Zarzilla Games. Última actualización: Integración de Mantenimiento Correctivo y Reportes PDF.*
 :D
