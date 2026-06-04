@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { mantenimientosAPI, proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
 
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 // ── Shared prioridad components ───────────────────────────────────────────────
@@ -265,6 +268,8 @@ function Mantenimiento() {
     return coincideTexto && coincideTipo && coincideEstatus && coincideLab;
   });
 
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(filtrados);
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="dashboard-container">
@@ -322,14 +327,14 @@ function Mantenimiento() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Equipo</th>
-              <th>Laboratorio</th>
-              <th>Tipo</th>
-              <th>Descripción</th>
-              <th>Prioridad</th>
-              <th>Proveedor</th>
-              <th>Fechas</th>
-              <th>Estatus / Costo</th>
+              <Th col="equipo" get={m => m.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="lab" get={m => equipos.find(e => e.clave_activo === m.clave_activo)?.laboratorios?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Laboratorio</Th>
+              <Th col="tipo" get={m => m.tipo_mantenimiento || ''} orden={orden} ordenarPor={ordenarPor}>Tipo</Th>
+              <Th col="desc" get={m => m.descripcion || ''} orden={orden} ordenarPor={ordenarPor}>Descripción</Th>
+              <Th col="prioridad" get={m => m.prioridad || 0} orden={orden} ordenarPor={ordenarPor}>Prioridad</Th>
+              <Th col="prov" get={m => m.proveedores?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Proveedor</Th>
+              <Th col="fecha" get={m => m.fecha_programada ? new Date(m.fecha_programada).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Fechas</Th>
+              <Th col="estatus" get={m => m.estatus || ''} orden={orden} ordenarPor={ordenarPor}>Estatus / Costo</Th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -339,7 +344,7 @@ function Mantenimiento() {
             ) : filtrados.length === 0 ? (
               <tr><td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              filtrados.map(m => {
+              datosOrdenados.map(m => {
                 const estConf = ESTATUS_CONFIG[m.estatus] || ESTATUS_CONFIG['Abierto'];
                 const labNombre = equipos.find(e => e.clave_activo === m.clave_activo)?.laboratorios?.nombre || '—';
                 return (

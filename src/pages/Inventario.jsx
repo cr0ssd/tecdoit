@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { inventarioAPI } from '../services/api';
 
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 function Inventario() {
   const [equipos, setEquipos] = useState([]);
   const [laboratorios, setLaboratorios] = useState([]);
@@ -58,6 +61,8 @@ function Inventario() {
     const coincideLab = filtroLab === '' || equipo.id_laboratorio?.toString() === filtroLab;
     return coincideTexto && coincideLab;
   });
+
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(equiposFiltrados);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -191,11 +196,11 @@ function Inventario() {
           <thead>
             <tr>
               <th>Fotografía</th>
-              <th>Clave de Activo</th>
-              <th>Marca y Modelo</th>
-              <th>Asignación</th>
-              <th>Parámetros Financieros / Uso</th>
-              <th>Estatus Operativo</th>
+              <Th col="clave" get={e => e.clave_activo} orden={orden} ordenarPor={ordenarPor}>Clave de Activo</Th>
+              <Th col="marca" get={e => `${e.marca || ''} ${e.modelo || ''}`} orden={orden} ordenarPor={ordenarPor}>Marca y Modelo</Th>
+              <Th col="lab" get={e => e.laboratorios?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Asignación</Th>
+              <Th col="costo" get={e => Number(e.costo) || 0} orden={orden} ordenarPor={ordenarPor}>Parámetros Financieros / Uso</Th>
+              <Th col="estatus" get={e => e.estatus || ''} orden={orden} ordenarPor={ordenarPor}>Estatus Operativo</Th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -205,7 +210,7 @@ function Inventario() {
             ) : equiposFiltrados.length === 0 ? (
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              equiposFiltrados.map((equipo) => (
+              datosOrdenados.map((equipo) => (
                 <tr key={equipo.clave_activo}>
                   <td>
                     {equipo.imagen_url ? (

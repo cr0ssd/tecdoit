@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
 
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 // ── PDF generation ─────────────────────────────────────────────────────────────
@@ -1070,6 +1073,8 @@ export default function Correctivo() {
     return coincideEstatus && coincideClave && coincideBusqueda && coincideLab;
   });
 
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(filtrados);
+
   const abiertos = tickets.filter(t => t.estatus === 'Abierto').length;
   const enProgreso = tickets.filter(t => t.estatus === 'En progreso').length;
   const completados = tickets.filter(t => t.estatus === 'Completado').length;
@@ -1114,8 +1119,15 @@ export default function Correctivo() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>#</th><th>Equipo</th><th>Descripción de la falla</th><th>Proveedor</th>
-              <th>Fecha programada</th><th>Costo</th><th>Prioridad</th><th>Estatus</th><th>Acciones</th>
+              <Th col="id" get={t => t.id_mantenimiento || 0} orden={orden} ordenarPor={ordenarPor}>#</Th>
+              <Th col="equipo" get={t => t.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="desc" get={t => t.descripcion || ''} orden={orden} ordenarPor={ordenarPor}>Descripción de la falla</Th>
+              <Th col="prov" get={t => t.proveedores?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Proveedor</Th>
+              <Th col="fecha" get={t => t.fecha_programada ? new Date(t.fecha_programada).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Fecha programada</Th>
+              <Th col="costo" get={t => Number(t.costo) || 0} orden={orden} ordenarPor={ordenarPor}>Costo</Th>
+              <Th col="prioridad" get={t => t.prioridad || 0} orden={orden} ordenarPor={ordenarPor}>Prioridad</Th>
+              <Th col="estatus" get={t => t.estatus || ''} orden={orden} ordenarPor={ordenarPor}>Estatus</Th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -1124,7 +1136,7 @@ export default function Correctivo() {
             ) : filtrados.length === 0 ? (
               <tr><td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              filtrados.map(t => {
+              datosOrdenados.map(t => {
                 const estConf = ESTATUS_CONFIG[t.estatus] || ESTATUS_CONFIG['Abierto'];
                 const abierto = t.estatus !== 'Completado';
                 return (

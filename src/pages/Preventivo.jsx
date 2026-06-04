@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 const PERIODICIDADES = [
@@ -259,6 +262,8 @@ export default function Preventivo() {
     if (filtroEstado === 'ok')            return !esEnMantenimiento && dias !== null && dias > 7;
     return true;
   });
+
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(configsFiltradas);
 
   const kpiVencidos      = configs.filter(c => calcularEstado(c).esVencido).length;
   const kpiMantenimiento = configs.filter(c => {
@@ -525,11 +530,11 @@ export default function Preventivo() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Equipo</th>
-              <th>Periodicidad</th>
-              <th>Proveedor / Responsable</th>
-              <th>Tareas</th>
-              <th>Próxima fecha</th>
+              <Th col="equipo" get={c => c.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="periodo" get={c => c.intervalo_dias || 0} orden={orden} ordenarPor={ordenarPor}>Periodicidad</Th>
+              <Th col="prov" get={c => proveedores.find(p => p.id_proveedor === c.id_proveedor)?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Proveedor / Responsable</Th>
+              <Th col="tareas" get={c => (c.tareas?.length || 0)} orden={orden} ordenarPor={ordenarPor}>Tareas</Th>
+              <Th col="proxima" get={c => c.proxima_fecha ? new Date(c.proxima_fecha).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Próxima fecha</Th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -540,7 +545,7 @@ export default function Preventivo() {
             ) : configsFiltradas.length === 0 ? (
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              configsFiltradas.map(config => {
+              datosOrdenados.map(config => {
                 const { esEnMantenimiento, esVencido } = calcularEstado(config);
                 const provNombre = proveedores.find(p => p.id_proveedor === config.id_proveedor)?.nombre;
 

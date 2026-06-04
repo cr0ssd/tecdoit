@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { usoEquiposAPI } from '../services/api';
 
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 // ─── Carrera helpers ──────────────────────────────────────────────────────────
 // Quick-select options shown as pill buttons
 const CARRERAS_RAPIDAS = ['PREPA','EXTERNO'];
@@ -148,6 +151,8 @@ function UsoEquipos() {
       hour12: true,
     });
   };
+
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(registros);
 
   return (
     <div className="dashboard-container">
@@ -335,12 +340,12 @@ function UsoEquipos() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Equipo</th>
-              <th>Usuario</th>
-              <th>Carrera</th>
-              <th>Inicio</th>
-              <th>Fin</th>
-              <th>Estatus</th>
+              <Th col="equipo" get={r => r.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="usuario" get={r => r.usuario_nombre || ''} orden={orden} ordenarPor={ordenarPor}>Usuario</Th>
+              <Th col="carrera" get={r => r.carrera || ''} orden={orden} ordenarPor={ordenarPor}>Carrera</Th>
+              <Th col="inicio" get={r => r.hora_inicio ? new Date(r.hora_inicio).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Inicio</Th>
+              <Th col="fin" get={r => r.hora_fin ? new Date(r.hora_fin).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Fin</Th>
+              <Th col="estatus" get={r => r.hora_fin ? 1 : 0} orden={orden} ordenarPor={ordenarPor}>Estatus</Th>
               <th>Acción</th>
             </tr>
           </thead>
@@ -358,7 +363,7 @@ function UsoEquipos() {
                 </td>
               </tr>
             ) : (
-              registros.map((reg) => (
+              datosOrdenados.map((reg) => (
                 <tr key={reg.id_uso}>
                   <td>
                     <strong>{reg.clave_activo}</strong>
