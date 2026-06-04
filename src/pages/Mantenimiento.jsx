@@ -398,8 +398,8 @@ function Mantenimiento() {
 
       {/* ── Picker: choose type ── */}
       {modalEstado === 'picker' && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '520px' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setModalEstado(null)}>
+          <div className="modal-content" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '6px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               Nuevo Mantenimiento
             </h2>
@@ -456,8 +456,8 @@ function Mantenimiento() {
 
       {/* ── Preventivo form (2-page) ── */}
       {modalEstado === 'preventivo' && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '560px' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setModalEstado(null)}>
+          <div className="modal-content" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             {/* Header + step indicator */}
             <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               <h2 style={{ fontSize: '18px', color: '#2c3e50', marginBottom: '8px' }}>
@@ -589,8 +589,8 @@ function Mantenimiento() {
 
       {/* ── Correctivo form ── */}
       {modalEstado === 'correctivo' && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '560px' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setModalEstado(null)}>
+          <div className="modal-content" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               <h2 style={{ fontSize: '18px', color: '#2c3e50' }}>Registrar Ticket Correctivo</h2>
             </div>

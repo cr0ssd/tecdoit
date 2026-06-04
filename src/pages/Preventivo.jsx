@@ -602,8 +602,8 @@ export default function Preventivo() {
 
       {/* ─── Modal: Registro / Edición ─────────────────────────── */}
       {mostrarModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setMostrarModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
               {modoEdicion ? 'Editar Configuración Preventiva' : 'Asignar Mantenimiento Preventivo'}
             </h2>
@@ -723,8 +723,8 @@ export default function Preventivo() {
 
       {/* ─── Modal: Completar Mantenimiento ───────────────────────── */}
       {mostrarCompletarModal && configCompletando && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setMostrarCompletarModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               <h2 style={{ marginBottom: '4px' }}>Completar Mantenimiento</h2>
               <p style={{ fontSize: '13px', color: '#7f8c8d', margin: 0 }}>

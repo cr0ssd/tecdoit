@@ -236,8 +236,8 @@ function Inventario() {
       </section>
 
       {mostrarModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px' }}>
+        <div className="modal-overlay" onClick={() => !subiendo && setMostrarModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
               {modoEdicion ? 'Modificación de Registro de Activo' : 'Alta de Nuevo Activo'}
             </h2>

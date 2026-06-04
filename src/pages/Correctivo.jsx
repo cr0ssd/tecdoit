@@ -1155,8 +1155,8 @@ export default function Correctivo() {
       </section>
 
       {mostrarModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '580px' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setMostrarModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '580px' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>Registrar Ticket Correctivo</h2>
             {error && <div style={{ backgroundColor: '#fceceb', color: '#e74c3c', padding: '10px 14px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px' }}>{error}</div>}
             <form onSubmit={crearTicket}>
