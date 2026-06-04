@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+import EquipoPicker from '../components/EquipoPicker';
+
 import { useOrdenamiento } from '../hooks/useOrdenamiento';
 import Th from '../components/Th';
 
@@ -48,107 +50,6 @@ function addDays(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-// ── Searchable equipo picker ──────────────────────────────────────
-// Shows a text input; typing filters a dropdown list below it.
-// Selecting an option fills the hidden value.
-function EquipoPicker({ equipos, value, onChange, disabled }) {
-  const [query, setQuery]   = useState('');
-  const [open,  setOpen]    = useState(false);
-  const ref                 = useRef(null);
-
-  // Sync display label when value changes externally (edit mode)
-  useEffect(() => {
-    if (value) {
-      const eq = equipos.find(e => e.clave_activo === value);
-      if (eq) setQuery(`${eq.clave_activo} — ${eq.marca} ${eq.modelo}`);
-    } else {
-      setQuery('');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
-
-  const filtrados = equipos.filter(eq => {
-    const q = query.toLowerCase();
-    return (
-      eq.clave_activo.toLowerCase().includes(q) ||
-      (eq.marca  || '').toLowerCase().includes(q) ||
-      (eq.modelo || '').toLowerCase().includes(q)
-    );
-  });
-
-  function seleccionar(eq) {
-    onChange(eq.clave_activo);
-    setQuery(`${eq.clave_activo} — ${eq.marca} ${eq.modelo}`);
-    setOpen(false);
-  }
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <input
-        type="text"
-        value={query}
-        onChange={e => { setQuery(e.target.value); onChange(''); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        placeholder="Buscar por clave, marca o modelo..."
-        disabled={disabled}
-        required
-        style={{
-          width: '100%', padding: '10px', border: '1px solid #bdc3c7',
-          borderRadius: '6px', fontSize: '14px', outline: 'none',
-          backgroundColor: disabled ? '#f4f7f6' : 'white',
-          cursor: disabled ? 'not-allowed' : 'text',
-        }}
-        onFocus={e => { if (!disabled) { e.target.style.borderColor = '#3498db'; setOpen(true); } }}
-        onBlur={e => e.target.style.borderColor = '#bdc3c7'}
-      />
-      {open && !disabled && filtrados.length > 0 && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-          backgroundColor: 'white', border: '1px solid #bdc3c7', borderTop: 'none',
-          borderRadius: '0 0 6px 6px', maxHeight: '200px', overflowY: 'auto',
-          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-        }}>
-          {filtrados.map(eq => (
-            <div
-              key={eq.clave_activo}
-              onMouseDown={() => seleccionar(eq)}
-              style={{
-                padding: '9px 12px', cursor: 'pointer', fontSize: '13px',
-                borderBottom: '1px solid #f0f0f0',
-                backgroundColor: eq.clave_activo === value ? '#e8f4fd' : 'white',
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f4f7f6'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = eq.clave_activo === value ? '#e8f4fd' : 'white'}
-            >
-              <strong>{eq.clave_activo}</strong>
-              <span style={{ color: '#7f8c8d', marginLeft: '8px' }}>{eq.marca} {eq.modelo}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {open && !disabled && filtrados.length === 0 && query.length > 0 && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-          backgroundColor: 'white', border: '1px solid #bdc3c7', borderTop: 'none',
-          borderRadius: '0 0 6px 6px', padding: '10px 12px',
-          fontSize: '13px', color: '#7f8c8d',
-        }}>
-          Sin resultados para "{query}"
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Estado badges — renders 1 or 2 badges side by side ───────────
