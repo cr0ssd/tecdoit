@@ -559,9 +559,6 @@ const ESTATUS_CONFIG = {
   'Abierto':     { bg: '#fef5e7', color: '#f39c12' },
   'En progreso': { bg: '#e8f4fd', color: '#2980b9' },
   'Completado':  { bg: '#eafaf1', color: '#27ae60' },
-  'Abierto':     { bg: '#fef5e7', color: '#f39c12' },
-  'En progreso': { bg: '#e8f4fd', color: '#2980b9' },
-  'Completado':  { bg: '#eafaf1', color: '#27ae60' },
 };
 
 function formatFecha(iso) {
