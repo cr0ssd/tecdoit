@@ -422,14 +422,9 @@ function UsoEquipos() {
   const [mensajeExito,   setMensajeExito]   = useState(null);
   const [mostrarCamara,  setMostrarCamara]  = useState(false);
   const [exportando,     setExportando]     = useState(false);
-  const [registros, setRegistros] = useState([]);
   const [equipos, setEquipos] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
-  const [mensajeExito, setMensajeExito] = useState(null);
 
   const [mostrarCamara, setMostrarCamara] = useState(false);
-
   const [nuevoUso, setNuevoUso] = useState({
     clave_activo:   '',
     usuario_nombre: '',
@@ -439,7 +434,6 @@ function UsoEquipos() {
   const [carreraCustom, setCarreraCustom] = useState(false);
   const [carreraError,  setCarreraError]  = useState(null);
 
-  useEffect(() => { obtenerRegistros(); }, []);
   useEffect(() => {
     obtenerRegistros();
     cargarEquipos();
