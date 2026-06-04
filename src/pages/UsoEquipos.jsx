@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { usoEquiposAPI } from '../services/api';
+import { usoEquiposAPI, equiposAPI } from '../services/api';
 
-// ── Carrera helpers ────────────────────────────────────────────────────────────
-const CARRERAS_RAPIDAS = ['PREPA', 'EXTERNO'];
-const CARRERA_REGEX    = /^([A-Z]{3}|EXTERNO|PREPA)$/;
+import EquipoPicker from '../components/EquipoPicker';
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
 
-function normalizarCarrera(raw) { return raw ? raw.trim().toUpperCase() : ''; }
-function carreraValida(val)     { return CARRERA_REGEX.test(normalizarCarrera(val)); }
+
+
+// ─── Carrera helpers ──────────────────────────────────────────────────────────
+// Quick-select options shown as pill buttons
+const CARRERAS_RAPIDAS = ['PREPA','EXTERNO'];
+
+// Regex mirrors backend: exactly 3 uppercase letters OR "PREPA"
+const CARRERA_REGEX = /^([A-Z]{3}|EXTERNO|PREPA)$/;
+
+function normalizarCarrera(raw) {
+  return raw ? raw.trim().toUpperCase() : '';
+}
+
+function carreraValida(val) {
+  return CARRERA_REGEX.test(normalizarCarrera(val));
+}
 
 // ── PDF: Reporte del Día ───────────────────────────────────────────────────────
 async function generarReporteDia(registros) {
