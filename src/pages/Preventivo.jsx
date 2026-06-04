@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+import EquipoPicker from '../components/EquipoPicker';
+
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 const PERIODICIDADES = [
@@ -45,107 +50,6 @@ function addDays(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-// ── Searchable equipo picker ──────────────────────────────────────
-// Shows a text input; typing filters a dropdown list below it.
-// Selecting an option fills the hidden value.
-function EquipoPicker({ equipos, value, onChange, disabled }) {
-  const [query, setQuery]   = useState('');
-  const [open,  setOpen]    = useState(false);
-  const ref                 = useRef(null);
-
-  // Sync display label when value changes externally (edit mode)
-  useEffect(() => {
-    if (value) {
-      const eq = equipos.find(e => e.clave_activo === value);
-      if (eq) setQuery(`${eq.clave_activo} — ${eq.marca} ${eq.modelo}`);
-    } else {
-      setQuery('');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
-
-  const filtrados = equipos.filter(eq => {
-    const q = query.toLowerCase();
-    return (
-      eq.clave_activo.toLowerCase().includes(q) ||
-      (eq.marca  || '').toLowerCase().includes(q) ||
-      (eq.modelo || '').toLowerCase().includes(q)
-    );
-  });
-
-  function seleccionar(eq) {
-    onChange(eq.clave_activo);
-    setQuery(`${eq.clave_activo} — ${eq.marca} ${eq.modelo}`);
-    setOpen(false);
-  }
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <input
-        type="text"
-        value={query}
-        onChange={e => { setQuery(e.target.value); onChange(''); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        placeholder="Buscar por clave, marca o modelo..."
-        disabled={disabled}
-        required
-        style={{
-          width: '100%', padding: '10px', border: '1px solid #bdc3c7',
-          borderRadius: '6px', fontSize: '14px', outline: 'none',
-          backgroundColor: disabled ? '#f4f7f6' : 'white',
-          cursor: disabled ? 'not-allowed' : 'text',
-        }}
-        onFocus={e => { if (!disabled) { e.target.style.borderColor = '#3498db'; setOpen(true); } }}
-        onBlur={e => e.target.style.borderColor = '#bdc3c7'}
-      />
-      {open && !disabled && filtrados.length > 0 && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-          backgroundColor: 'white', border: '1px solid #bdc3c7', borderTop: 'none',
-          borderRadius: '0 0 6px 6px', maxHeight: '200px', overflowY: 'auto',
-          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-        }}>
-          {filtrados.map(eq => (
-            <div
-              key={eq.clave_activo}
-              onMouseDown={() => seleccionar(eq)}
-              style={{
-                padding: '9px 12px', cursor: 'pointer', fontSize: '13px',
-                borderBottom: '1px solid #f0f0f0',
-                backgroundColor: eq.clave_activo === value ? '#e8f4fd' : 'white',
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f4f7f6'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = eq.clave_activo === value ? '#e8f4fd' : 'white'}
-            >
-              <strong>{eq.clave_activo}</strong>
-              <span style={{ color: '#7f8c8d', marginLeft: '8px' }}>{eq.marca} {eq.modelo}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {open && !disabled && filtrados.length === 0 && query.length > 0 && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-          backgroundColor: 'white', border: '1px solid #bdc3c7', borderTop: 'none',
-          borderRadius: '0 0 6px 6px', padding: '10px 12px',
-          fontSize: '13px', color: '#7f8c8d',
-        }}>
-          Sin resultados para "{query}"
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Estado badges — renders 1 or 2 badges side by side ───────────
@@ -259,6 +163,8 @@ export default function Preventivo() {
     if (filtroEstado === 'ok')            return !esEnMantenimiento && dias !== null && dias > 7;
     return true;
   });
+
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(configsFiltradas);
 
   const kpiVencidos      = configs.filter(c => calcularEstado(c).esVencido).length;
   const kpiMantenimiento = configs.filter(c => {
@@ -525,11 +431,11 @@ export default function Preventivo() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Equipo</th>
-              <th>Periodicidad</th>
-              <th>Proveedor / Responsable</th>
-              <th>Tareas</th>
-              <th>Próxima fecha</th>
+              <Th col="equipo" get={c => c.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="periodo" get={c => c.intervalo_dias || 0} orden={orden} ordenarPor={ordenarPor}>Periodicidad</Th>
+              <Th col="prov" get={c => proveedores.find(p => p.id_proveedor === c.id_proveedor)?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Proveedor / Responsable</Th>
+              <Th col="tareas" get={c => (c.tareas?.length || 0)} orden={orden} ordenarPor={ordenarPor}>Tareas</Th>
+              <Th col="proxima" get={c => c.proxima_fecha ? new Date(c.proxima_fecha).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Próxima fecha</Th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -540,7 +446,7 @@ export default function Preventivo() {
             ) : configsFiltradas.length === 0 ? (
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              configsFiltradas.map(config => {
+              datosOrdenados.map(config => {
                 const { esEnMantenimiento, esVencido } = calcularEstado(config);
                 const provNombre = proveedores.find(p => p.id_proveedor === config.id_proveedor)?.nombre;
 
@@ -602,8 +508,8 @@ export default function Preventivo() {
 
       {/* ─── Modal: Registro / Edición ─────────────────────────── */}
       {mostrarModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setMostrarModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
               {modoEdicion ? 'Editar Configuración Preventiva' : 'Asignar Mantenimiento Preventivo'}
             </h2>
@@ -723,8 +629,8 @@ export default function Preventivo() {
 
       {/* ─── Modal: Completar Mantenimiento ───────────────────────── */}
       {mostrarCompletarModal && configCompletando && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setMostrarCompletarModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               <h2 style={{ marginBottom: '4px' }}>Completar Mantenimiento</h2>
               <p style={{ fontSize: '13px', color: '#7f8c8d', margin: 0 }}>

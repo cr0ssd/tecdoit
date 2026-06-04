@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { mantenimientosAPI, proveedoresAPI, equiposAPI, inventarioAPI } from '../services/api';
 
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 // ── Shared prioridad components ───────────────────────────────────────────────
@@ -265,6 +268,8 @@ function Mantenimiento() {
     return coincideTexto && coincideTipo && coincideEstatus && coincideLab;
   });
 
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(filtrados);
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="dashboard-container">
@@ -322,14 +327,14 @@ function Mantenimiento() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Equipo</th>
-              <th>Laboratorio</th>
-              <th>Tipo</th>
-              <th>Descripción</th>
-              <th>Prioridad</th>
-              <th>Proveedor</th>
-              <th>Fechas</th>
-              <th>Estatus / Costo</th>
+              <Th col="equipo" get={m => m.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="lab" get={m => equipos.find(e => e.clave_activo === m.clave_activo)?.laboratorios?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Laboratorio</Th>
+              <Th col="tipo" get={m => m.tipo_mantenimiento || ''} orden={orden} ordenarPor={ordenarPor}>Tipo</Th>
+              <Th col="desc" get={m => m.descripcion || ''} orden={orden} ordenarPor={ordenarPor}>Descripción</Th>
+              <Th col="prioridad" get={m => m.prioridad || 0} orden={orden} ordenarPor={ordenarPor}>Prioridad</Th>
+              <Th col="prov" get={m => m.proveedores?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Proveedor</Th>
+              <Th col="fecha" get={m => m.fecha_programada ? new Date(m.fecha_programada).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Fechas</Th>
+              <Th col="estatus" get={m => m.estatus || ''} orden={orden} ordenarPor={ordenarPor}>Estatus / Costo</Th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -339,7 +344,7 @@ function Mantenimiento() {
             ) : filtrados.length === 0 ? (
               <tr><td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              filtrados.map(m => {
+              datosOrdenados.map(m => {
                 const estConf = ESTATUS_CONFIG[m.estatus] || ESTATUS_CONFIG['Abierto'];
                 const labNombre = equipos.find(e => e.clave_activo === m.clave_activo)?.laboratorios?.nombre || '—';
                 return (
@@ -398,8 +403,8 @@ function Mantenimiento() {
 
       {/* ── Picker: choose type ── */}
       {modalEstado === 'picker' && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '520px' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setModalEstado(null)}>
+          <div className="modal-content" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '6px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               Nuevo Mantenimiento
             </h2>
@@ -456,8 +461,8 @@ function Mantenimiento() {
 
       {/* ── Preventivo form (2-page) ── */}
       {modalEstado === 'preventivo' && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '560px' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setModalEstado(null)}>
+          <div className="modal-content" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             {/* Header + step indicator */}
             <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               <h2 style={{ fontSize: '18px', color: '#2c3e50', marginBottom: '8px' }}>
@@ -589,8 +594,8 @@ function Mantenimiento() {
 
       {/* ── Correctivo form ── */}
       {modalEstado === 'correctivo' && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '560px' }}>
+        <div className="modal-overlay" onClick={() => !guardando && setModalEstado(null)}>
+          <div className="modal-content" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
               <h2 style={{ fontSize: '18px', color: '#2c3e50' }}>Registrar Ticket Correctivo</h2>
             </div>

@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { inventarioAPI } from '../services/api';
 
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
+
 function Inventario() {
   const [equipos, setEquipos] = useState([]);
   const [laboratorios, setLaboratorios] = useState([]);
@@ -58,6 +61,13 @@ function Inventario() {
     const coincideLab = filtroLab === '' || equipo.id_laboratorio?.toString() === filtroLab;
     return coincideTexto && coincideLab;
   });
+
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(equiposFiltrados);
+
+  const claveDuplicada = !modoEdicion && nuevoEquipo.clave_activo.trim() !== ''
+    ? equipos.find(e => e.clave_activo.toLowerCase() === nuevoEquipo.clave_activo.trim().toLowerCase())
+    : null;
+  const claveDisponible = !modoEdicion && nuevoEquipo.clave_activo.trim() !== '' && !claveDuplicada;
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -191,11 +201,11 @@ function Inventario() {
           <thead>
             <tr>
               <th>Fotografía</th>
-              <th>Clave de Activo</th>
-              <th>Marca y Modelo</th>
-              <th>Asignación</th>
-              <th>Parámetros Financieros / Uso</th>
-              <th>Estatus Operativo</th>
+              <Th col="clave" get={e => e.clave_activo} orden={orden} ordenarPor={ordenarPor}>Clave de Activo</Th>
+              <Th col="marca" get={e => `${e.marca || ''} ${e.modelo || ''}`} orden={orden} ordenarPor={ordenarPor}>Marca y Modelo</Th>
+              <Th col="lab" get={e => e.laboratorios?.nombre || ''} orden={orden} ordenarPor={ordenarPor}>Asignación</Th>
+              <Th col="costo" get={e => Number(e.costo) || 0} orden={orden} ordenarPor={ordenarPor}>Parámetros Financieros / Uso</Th>
+              <Th col="estatus" get={e => e.estatus || ''} orden={orden} ordenarPor={ordenarPor}>Estatus Operativo</Th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -205,7 +215,7 @@ function Inventario() {
             ) : equiposFiltrados.length === 0 ? (
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              equiposFiltrados.map((equipo) => (
+              datosOrdenados.map((equipo) => (
                 <tr key={equipo.clave_activo}>
                   <td>
                     {equipo.imagen_url ? (
@@ -236,8 +246,8 @@ function Inventario() {
       </section>
 
       {mostrarModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px' }}>
+        <div className="modal-overlay" onClick={() => !subiendo && setMostrarModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
               {modoEdicion ? 'Modificación de Registro de Activo' : 'Alta de Nuevo Activo'}
             </h2>
@@ -261,6 +271,16 @@ function Inventario() {
                     disabled={modoEdicion}
                     style={modoEdicion ? { backgroundColor: '#f4f7f6', cursor: 'not-allowed' } : {}}
                   />
+                  {claveDuplicada && (
+                    <small style={{ color: '#e74c3c', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                      ⚠️ Ya registrada en: {claveDuplicada.marca} {claveDuplicada.modelo}
+                    </small>
+                  )}
+                  {claveDisponible && (
+                    <small style={{ color: '#27ae60', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                      ✓ Clave disponible
+                    </small>
+                  )}
                 </div>
                 <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Asignación de Área</label>
@@ -304,7 +324,7 @@ function Inventario() {
                 <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={subiendo}>
                   Cancelar Operación
                 </button>
-                <button type="submit" className="btn-primary" disabled={subiendo}>
+                <button type="submit" className="btn-primary" disabled={subiendo || !!claveDuplicada}>
                   {subiendo ? 'Procesando...' : modoEdicion ? 'Aplicar Modificaciones' : 'Confirmar Registro'}
                 </button>
               </div>

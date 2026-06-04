@@ -408,6 +408,13 @@ function UsoEquipos() {
   const [mensajeExito,   setMensajeExito]   = useState(null);
   const [mostrarCamara,  setMostrarCamara]  = useState(false);
   const [exportando,     setExportando]     = useState(false);
+  const [registros, setRegistros] = useState([]);
+  const [equipos, setEquipos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [mensajeExito, setMensajeExito] = useState(null);
+
+  const [mostrarCamara, setMostrarCamara] = useState(false);
 
   const [nuevoUso, setNuevoUso] = useState({
     clave_activo:   '',
@@ -419,6 +426,10 @@ function UsoEquipos() {
   const [carreraError,  setCarreraError]  = useState(null);
 
   useEffect(() => { obtenerRegistros(); }, []);
+  useEffect(() => {
+    obtenerRegistros();
+    cargarEquipos();
+  }, []);
 
   async function obtenerRegistros() {
     setCargando(true);
@@ -430,6 +441,15 @@ function UsoEquipos() {
       setError('No se pudo cargar la bitácora. Verifica que el backend esté corriendo.');
     } finally {
       setCargando(false);
+    }
+  }
+
+  async function cargarEquipos() {
+    try {
+      const data = await equiposAPI.obtenerTodos();
+      setEquipos(data);
+    } catch (err) {
+      console.error('Error al cargar equipos:', err.message);
     }
   }
 
@@ -523,6 +543,8 @@ function UsoEquipos() {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
   };
+
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(registros);
 
   // Count today's loans for the button label
   const registrosHoy = registros.filter(r => {
@@ -633,6 +655,11 @@ function UsoEquipos() {
           <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '15px' }}>
             <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
               <label>Clave del Equipo</label>
+              <EquipoPicker
+                equipos={equipos}
+                value={nuevoUso.clave_activo}
+                onChange={val => setNuevoUso(prev => ({ ...prev, clave_activo: val }))}
+              />
               <input type="text" name="clave_activo" required value={nuevoUso.clave_activo}
                 onChange={handleInputChange} placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)" />
             </div>
@@ -707,12 +734,12 @@ function UsoEquipos() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Equipo</th>
-              <th>Usuario</th>
-              <th>Carrera</th>
-              <th>Inicio</th>
-              <th>Fin</th>
-              <th>Estatus</th>
+              <Th col="equipo" get={r => r.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="usuario" get={r => r.usuario_nombre || ''} orden={orden} ordenarPor={ordenarPor}>Usuario</Th>
+              <Th col="carrera" get={r => r.carrera || ''} orden={orden} ordenarPor={ordenarPor}>Carrera</Th>
+              <Th col="inicio" get={r => r.hora_inicio ? new Date(r.hora_inicio).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Inicio</Th>
+              <Th col="fin" get={r => r.hora_fin ? new Date(r.hora_fin).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Fin</Th>
+              <Th col="estatus" get={r => r.hora_fin ? 1 : 0} orden={orden} ordenarPor={ordenarPor}>Estatus</Th>
               <th>Acción</th>
             </tr>
           </thead>
@@ -722,7 +749,7 @@ function UsoEquipos() {
             ) : registros.length === 0 ? (
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              registros.map((reg) => (
+              datosOrdenados.map((reg) => (
                 <tr key={reg.id_uso}>
                   <td>
                     <strong>{reg.clave_activo}</strong><br />

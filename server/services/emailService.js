@@ -1,4 +1,3 @@
-
 const { Resend } = require('resend');
 const supabase = require('../config/supabaseClient');
 const resend = new Resend(process.env.RESEND_API_KEY);
