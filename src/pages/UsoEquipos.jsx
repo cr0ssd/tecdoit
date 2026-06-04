@@ -424,7 +424,6 @@ function UsoEquipos() {
   const [exportando,     setExportando]     = useState(false);
   const [equipos, setEquipos] = useState([]);
 
-  const [mostrarCamara, setMostrarCamara] = useState(false);
   const [nuevoUso, setNuevoUso] = useState({
     clave_activo:   '',
     usuario_nombre: '',
