@@ -1,6 +1,6 @@
 # tecdoit - Sistema Integral de Gestión de Laboratorios
 
-Bienvenido al repositorio oficial de **tecdoit**, una plataforma robusta diseñada para la optimización, control y mantenimiento de activos en redes de laboratorios. Este sistema facilita la gestión técnica y operativa, automatizando procesos críticos y proporcionando herramientas analíticas para la toma de decisiones financieras (CAPEX).
+Bienvenido al repositorio oficial de **tecdoit**, una plataforma robusta diseñada para la optimización, control y mantenimiento de activos en redes de laboratorios. Este sistema facilita la gestión técnica y operativa, automatizando procesos críticos y proporcionando herramientas analíticas para el control de gastos operativos (**OpEx**).
 
 ## 🚀 Propósito del Proyecto
 **tecdoit** centraliza la operación de laboratorios mediante un ecosistema digital que integra el seguimiento de inventarios en tiempo real, la automatización de mantenimientos preventivos y correctivos, y el monitoreo de uso de equipos mediante tecnologías de lectura rápida (QR).
@@ -10,48 +10,53 @@ Bienvenido al repositorio oficial de **tecdoit**, una plataforma robusta diseña
 ### Frontend (Interfaces de Usuario)
 * **Framework:** React.js (Vite)
 * **Enrutamiento:** React Router 7
-* **Visualización de Datos:** Recharts (Analítica financiera y operativa)
-* **Reportes:** jsPDF + AutoTable (Generación de fichas técnicas en PDF)
-* **Hardware:** React QR Scanner (Gestión de préstamos y uso)
-* **Estilos:** CSS3 Moderno (Diseño responsivo y profesional)
+* **Visualización de Datos:** Recharts (Analítica de estatus y OpEx)
+* **Reportes:** jsPDF + AutoTable (Generación de reportes técnicos detallados en PDF)
+* **Hardware:** React QR Scanner (Gestión de préstamos y uso de activos)
+* **Estilos:** CSS3 Moderno (Diseño responsivo, profesional y minimalista)
 
 ### Backend (Lógica de Negocio y Automatización)
 * **Servidor:** Node.js + Express.js
 * **Base de Datos:** Supabase (PostgreSQL con Row-Level Security)
-* **Automatización:** node-cron (Escaneo diario de mantenimientos programados)
+* **Almacenamiento:** Supabase Storage (Resguardo de evidencias fotográficas de activos)
+* **Automatización:** node-cron (Escaneo de mantenimientos programados y alertas)
 * **Comunicaciones:** Resend API (Alertas automáticas por correo electrónico)
 
 ## 📦 Módulos Principales
 
 ### 1. Panel de Control (Dashboard Analítico)
-* **Cálculo de CAPEX:** Monitoreo en tiempo real del presupuesto global, restando inversiones en activos y gastos operativos.
-* **Centro de Notificaciones:** Sistema dinámico que intercepta alertas por umbrales de horas de uso o vencimiento de servicios.
-* **KPIs Operativos:** Visualización clara de equipos activos, en mantenimiento y disponibilidad general.
+* **Gestión de OpEx:** Cálculo automático del Gasto Operativo Acumulado, desglosado en:
+  * **Reposiciones:** Costo total de inversión en activos de inventario.
+  * **Servicios:** Costos derivados de mantenimientos preventivos y correctivos.
+* **Centro de Notificaciones:** Sistema dinámico que alerta sobre mantenimientos urgentes, umbrales de horas de uso alcanzados y avisos del sistema.
+* **Calendario Preventivo:** Widget interactivo para visualizar próximas fechas de servicio.
+* **KPIs Operativos:** Monitoreo en tiempo real de equipos disponibles, en mantenimiento y en uso.
 
-### 2. Gestión de Inventario
-* **Control de Activos:** CRUD completo de equipos con parámetros técnicos detallados (marca, modelo, laboratorios).
-* **Almacenamiento en la Nube:** Integración con Supabase Storage para el resguardo de evidencias fotográficas.
-* **Umbrales Operativos:** Configuración de límites de horas de uso para disparar mantenimientos preventivos.
+### 2. Gestión de Inventario (Activos)
+* **Catálogo de Activos:** CRUD completo de equipos con parámetros técnicos (marca, modelo, laboratorio asignado).
+* **Control Financiero:** Registro de costo de reposición y configuración de umbrales operativos (límite de horas).
+* **Evidencia Visual:** Integración con Supabase Storage para la carga y visualización de fotografías de los equipos.
 
-### 3. Mantenimiento Preventivo (Cíclico)
-* **Programación Inteligente:** Configuración de periodicidades (7 días hasta 6 meses o personalizados).
-* **Listas de Verificación:** Definición de tareas específicas por equipo para asegurar la calidad del servicio.
-* **Reset Automático:** Al completar un ciclo, el sistema recalcula la próxima fecha y restablece contadores de uso.
+### 3. Mantenimiento Preventivo (Ciclo de Vida)
+* **Programación por Periodicidad:** Configuración de intervalos (desde 7 días hasta 6 meses) para servicios recurrentes.
+* **Checklists de Tareas:** Definición de tareas específicas por equipo para asegurar la calidad del servicio.
+* **Workflow de Cierre:** Proceso de finalización que registra resultados de tareas y recalcula automáticamente la próxima fecha de mantenimiento.
 
 ### 4. Mantenimiento Correctivo (Tickets de Falla)
-* **Gestión de Tickets:** Ciclo de vida completo (Abierto -> En Progreso -> Completado).
-* **Análisis de Fallas:** Registro de causas raíz y acciones correctivas aplicadas.
-* **Reportes Técnicos:** Generación instantánea de reportes PDF detallados con el historial de intervenciones y costos asociados.
+* **Ciclo de Tickets:** Gestión de estados (Abierto -> En Progreso -> Completado) con priorización del 0 al 5 (Crítica).
+* **Análisis de Causa Raíz:** Registro detallado de fallas detectadas y acciones correctivas aplicadas.
+* **Reportes PDF:** Generación de expedientes técnicos profesionales que incluyen KPIs del equipo, historial de tickets y detalles de intervenciones.
 
-### 5. Uso de Equipos (Módulo QR)
-* **Préstamos Automatizados:** Registro ágil de entrada/salida de equipos mediante escaneo de códigos QR, eliminando errores de captura manual.
-* **Bitácora de Uso:** Historial transparente de quién y por cuánto tiempo utilizó cada activo.
+### 5. Uso de Equipos (Bitácora QR)
+* **Préstamos mediante QR:** Registro instantáneo de entrada/salida de equipos eliminando errores manuales.
+* **Validación de Usuarios:** Registro de nombre de usuario y carrera (con validación de formato institucional).
+* **Bitácora en Tiempo Real:** Seguimiento activo de quién utiliza cada activo y por cuánto tiempo.
 
 ## ⚙️ Configuración del Entorno (Setup)
 
 ### Requisitos Previos
 * Node.js (v18+)
-* Cuenta en Supabase y Resend
+* Cuenta en Supabase y Resend API
 
 ### Pasos para la Instalación
 
@@ -81,7 +86,7 @@ Bienvenido al repositorio oficial de **tecdoit**, una plataforma robusta diseña
    ```
 
 3. **Ejecución del Sistema:**
-   Inicia ambos servicios para el funcionamiento completo:
+   Inicia ambos servicios simultáneamente:
    ```bash
    # Terminal 1: Frontend
    npm run dev
@@ -92,10 +97,9 @@ Bienvenido al repositorio oficial de **tecdoit**, una plataforma robusta diseña
 
 ## 🛡️ Estándares de Ingeniería
 
-* **Seguridad:** Uso estricto de Row-Level Security (RLS) en Supabase.
-* **Mantenibilidad:** Arquitectura modular con separación clara entre lógica de API y componentes de interfaz.
-* **Experiencia de Usuario:** Implementación de "Estado Optimista" para transiciones fluidas en el Dashboard y Mantenimiento.
+* **Seguridad:** Implementación de Row-Level Security (RLS) para proteger los datos en Supabase.
+* **Modularidad:** Separación estricta entre controladores de API, servicios de automatización y componentes de UI.
+* **UX/UI:** Uso de estados optimistas y validaciones en tiempo real para una experiencia de usuario fluida.
 
 ---
-*Documentación oficial mantenida por el equipo Zarzilla Games. Última actualización: Integración de Mantenimiento Correctivo y Reportes PDF.*
-:D
+*Documentación oficial mantenida por el equipo Zarzilla Games. Última actualización: Optimización de OpEx y Reportes PDF.*
