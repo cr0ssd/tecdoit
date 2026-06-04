@@ -64,6 +64,11 @@ function Inventario() {
 
   const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(equiposFiltrados);
 
+  const claveDuplicada = !modoEdicion && nuevoEquipo.clave_activo.trim() !== ''
+    ? equipos.find(e => e.clave_activo.toLowerCase() === nuevoEquipo.clave_activo.trim().toLowerCase())
+    : null;
+  const claveDisponible = !modoEdicion && nuevoEquipo.clave_activo.trim() !== '' && !claveDuplicada;
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setNuevoEquipo({ ...nuevoEquipo, [name]: value });
@@ -266,6 +271,16 @@ function Inventario() {
                     disabled={modoEdicion}
                     style={modoEdicion ? { backgroundColor: '#f4f7f6', cursor: 'not-allowed' } : {}}
                   />
+                  {claveDuplicada && (
+                    <small style={{ color: '#e74c3c', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                      ⚠️ Ya registrada en: {claveDuplicada.marca} {claveDuplicada.modelo}
+                    </small>
+                  )}
+                  {claveDisponible && (
+                    <small style={{ color: '#27ae60', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                      ✓ Clave disponible
+                    </small>
+                  )}
                 </div>
                 <div className="form-group" style={{ marginBottom: '0' }}>
                   <label>Asignación de Área</label>
@@ -309,7 +324,7 @@ function Inventario() {
                 <button type="button" className="btn-secondary" onClick={() => setMostrarModal(false)} disabled={subiendo}>
                   Cancelar Operación
                 </button>
-                <button type="submit" className="btn-primary" disabled={subiendo}>
+                <button type="submit" className="btn-primary" disabled={subiendo || !!claveDuplicada}>
                   {subiendo ? 'Procesando...' : modoEdicion ? 'Aplicar Modificaciones' : 'Confirmar Registro'}
                 </button>
               </div>
