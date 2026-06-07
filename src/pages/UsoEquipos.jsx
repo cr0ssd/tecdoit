@@ -1,33 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { usoEquiposAPI, equiposAPI } from '../services/api';
+import { usoEquiposAPI } from '../services/api';
 
-import EquipoPicker from '../components/EquipoPicker';
-import { useOrdenamiento } from '../hooks/useOrdenamiento';
-import Th from '../components/Th';
+// ── Carrera helpers ────────────────────────────────────────────────────────────
+const CARRERAS_RAPIDAS = ['PREPA', 'EXTERNO'];
+const CARRERA_REGEX    = /^([A-Z]{3}|EXTERNO|PREPA)$/;
 
-
-
-// ─── Carrera helpers ──────────────────────────────────────────────────────────
-// Quick-select options shown as pill buttons
-const CARRERAS_RAPIDAS = ['PREPA','EXTERNO'];
-
-// Regex mirrors backend: exactly 3 uppercase letters OR "PREPA"
-const CARRERA_REGEX = /^([A-Z]{3}|EXTERNO|PREPA)$/;
-
-function normalizarCarrera(raw) {
-  return raw ? raw.trim().toUpperCase() : '';
-}
-
-function carreraValida(val) {
-  return CARRERA_REGEX.test(normalizarCarrera(val));
-}
+function normalizarCarrera(raw) { return raw ? raw.trim().toUpperCase() : ''; }
+function carreraValida(val)     { return CARRERA_REGEX.test(normalizarCarrera(val)); }
 
 // ── PDF: Reporte del Día ───────────────────────────────────────────────────────
 async function generarReporteDia(registros) {
-  const { jsPDF }       = await import('jspdf');
-  const { applyPlugin } = await import('jspdf-autotable');
-  applyPlugin(jsPDF);
+  const { jsPDF }     = await import('jspdf');
+  const { autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const PW  = doc.internal.pageSize.getWidth();   // 297
@@ -214,7 +199,7 @@ async function generarReporteDia(registros) {
   doc.setTextColor(...WHITE);
   doc.text('BITÁCORA COMPLETA DEL DÍA', 20, tableY + 4.8);
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: tableY + 10,
     margin: { left: 10, right: 10 },
     tableWidth: PW - 20,
@@ -336,7 +321,7 @@ async function generarReporteDia(registros) {
       ];
     });
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: curY,
       margin: { left: 10, right: 10 },
       tableWidth: PW - 20,
@@ -387,7 +372,7 @@ async function generarReporteDia(registros) {
         },
       ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: curY,
       margin: { left: 10, right: 10 },
       tableWidth: 100,   // compact — left side only
@@ -422,7 +407,6 @@ function UsoEquipos() {
   const [mensajeExito,   setMensajeExito]   = useState(null);
   const [mostrarCamara,  setMostrarCamara]  = useState(false);
   const [exportando,     setExportando]     = useState(false);
-  const [equipos, setEquipos] = useState([]);
 
   const [nuevoUso, setNuevoUso] = useState({
     clave_activo:   '',
@@ -433,10 +417,7 @@ function UsoEquipos() {
   const [carreraCustom, setCarreraCustom] = useState(false);
   const [carreraError,  setCarreraError]  = useState(null);
 
-  useEffect(() => {
-    obtenerRegistros();
-    cargarEquipos();
-  }, []);
+  useEffect(() => { obtenerRegistros(); }, []);
 
   async function obtenerRegistros() {
     setCargando(true);
@@ -448,15 +429,6 @@ function UsoEquipos() {
       setError('No se pudo cargar la bitácora. Verifica que el backend esté corriendo.');
     } finally {
       setCargando(false);
-    }
-  }
-
-  async function cargarEquipos() {
-    try {
-      const data = await equiposAPI.obtenerTodos();
-      setEquipos(data);
-    } catch (err) {
-      console.error('Error al cargar equipos:', err.message);
     }
   }
 
@@ -550,8 +522,6 @@ function UsoEquipos() {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
   };
-
-  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(registros);
 
   // Count today's loans for the button label
   const registrosHoy = registros.filter(r => {
@@ -662,11 +632,6 @@ function UsoEquipos() {
           <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '15px' }}>
             <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
               <label>Clave del Equipo</label>
-              <EquipoPicker
-                equipos={equipos}
-                value={nuevoUso.clave_activo}
-                onChange={val => setNuevoUso(prev => ({ ...prev, clave_activo: val }))}
-              />
               <input type="text" name="clave_activo" required value={nuevoUso.clave_activo}
                 onChange={handleInputChange} placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)" />
             </div>
@@ -741,12 +706,12 @@ function UsoEquipos() {
         <table className="data-table">
           <thead>
             <tr>
-              <Th col="equipo" get={r => r.clave_activo} orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
-              <Th col="usuario" get={r => r.usuario_nombre || ''} orden={orden} ordenarPor={ordenarPor}>Usuario</Th>
-              <Th col="carrera" get={r => r.carrera || ''} orden={orden} ordenarPor={ordenarPor}>Carrera</Th>
-              <Th col="inicio" get={r => r.hora_inicio ? new Date(r.hora_inicio).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Inicio</Th>
-              <Th col="fin" get={r => r.hora_fin ? new Date(r.hora_fin).getTime() : null} orden={orden} ordenarPor={ordenarPor}>Fin</Th>
-              <Th col="estatus" get={r => r.hora_fin ? 1 : 0} orden={orden} ordenarPor={ordenarPor}>Estatus</Th>
+              <th>Equipo</th>
+              <th>Usuario</th>
+              <th>Carrera</th>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th>Estatus</th>
               <th>Acción</th>
             </tr>
           </thead>
@@ -756,7 +721,7 @@ function UsoEquipos() {
             ) : registros.length === 0 ? (
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              datosOrdenados.map((reg) => (
+              registros.map((reg) => (
                 <tr key={reg.id_uso}>
                   <td>
                     <strong>{reg.clave_activo}</strong><br />

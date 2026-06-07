@@ -99,9 +99,8 @@ function CalendarioPanel({ fechas, onClose }) {
 
 // ── PDF: Reporte de Laboratorio ────────────────────────────────────────────────
 async function generarReporteLaboratorio(datos) {
-  const { jsPDF }       = await import('jspdf');
-  const { applyPlugin } = await import('jspdf-autotable');
-  applyPlugin(jsPDF);
+  const { jsPDF }     = await import('jspdf');
+  const { autoTable } = await import('jspdf-autotable');
 
   const { laboratorio, periodo, desde, equipos, mantenimientos, usos, preventivos } = datos;
   const labNombre  = laboratorio.nombre;
@@ -381,7 +380,7 @@ async function generarReporteLaboratorio(datos) {
     doc.setTextColor(...MUTED);
     doc.text('No hay equipos registrados en este laboratorio.', PW / 2, curY + 8, { align: 'center' });
   } else {
-    doc.autoTable({
+    autoTable(doc, {
       startY: curY,
       margin: { left: 10, right: 10 },
       head: [[
@@ -428,7 +427,7 @@ async function generarReporteLaboratorio(datos) {
     doc.setTextColor(...MUTED);
     doc.text('No se registraron mantenimientos en este período.', PW / 2, curY + 8, { align: 'center' });
   } else {
-    doc.autoTable({
+    autoTable(doc, {
       startY: curY,
       margin: { left: 10, right: 10 },
       head: [[
@@ -474,7 +473,7 @@ async function generarReporteLaboratorio(datos) {
     doc.setTextColor(...MUTED);
     doc.text('No se registraron préstamos en este período.', PW / 2, curY + 8, { align: 'center' });
   } else {
-    doc.autoTable({
+    autoTable(doc, {
       startY: curY,
       margin: { left: 10, right: 10 },
       head: [[
@@ -525,7 +524,7 @@ async function generarReporteLaboratorio(datos) {
         { content: `${Math.round((n / usos.length) * 100)}%`, styles: { halign: 'center', fontSize: 7.5, textColor: MUTED } },
       ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       startY:  secY,
       margin:  { left: 10, right: 10 },
       tableWidth: 90,
@@ -564,7 +563,7 @@ async function generarReporteLaboratorio(datos) {
       return { txt: `${d} días`, col: C_OK };
     };
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: curY,
       margin: { left: 10, right: 10 },
       head: [[
