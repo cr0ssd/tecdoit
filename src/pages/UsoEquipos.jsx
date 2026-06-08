@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { usoEquiposAPI } from '../services/api';
+import { usoEquiposAPI, equiposAPI } from '../services/api';
+import EquipoPicker from '../components/EquipoPicker';
 
 // ── Carrera helpers ────────────────────────────────────────────────────────────
 const CARRERAS_RAPIDAS = ['PREPA', 'EXTERNO'];
@@ -402,6 +403,7 @@ async function generarReporteDia(registros) {
 // ── Component ──────────────────────────────────────────────────────────────────
 function UsoEquipos() {
   const [registros,      setRegistros]      = useState([]);
+  const [equipos,        setEquipos]        = useState([]);
   const [cargando,       setCargando]       = useState(true);
   const [error,          setError]          = useState(null);
   const [mensajeExito,   setMensajeExito]   = useState(null);
@@ -422,8 +424,12 @@ function UsoEquipos() {
   async function obtenerRegistros() {
     setCargando(true);
     try {
-      const data = await usoEquiposAPI.obtenerRegistros();
+      const [data, dataEq] = await Promise.all([
+        usoEquiposAPI.obtenerRegistros(),
+        equiposAPI.obtenerTodos(),
+      ]);
       setRegistros(data);
+      setEquipos(dataEq);
     } catch (err) {
       console.error('Error al cargar registros:', err.message);
       setError('No se pudo cargar la bitácora. Verifica que el backend esté corriendo.');
@@ -632,8 +638,12 @@ function UsoEquipos() {
           <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '15px' }}>
             <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
               <label>Clave del Equipo</label>
-              <input type="text" name="clave_activo" required value={nuevoUso.clave_activo}
-                onChange={handleInputChange} placeholder="Ej. TEC-COMP-001 (Escríbelo o usa la cámara)" />
+              <EquipoPicker
+                equipos={equipos}
+                value={nuevoUso.clave_activo}
+                onChange={(clave) => setNuevoUso(prev => ({ ...prev, clave_activo: clave }))}
+                disabled={false}
+              />
             </div>
             <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
               <label>Nombre del Usuario / Alumno</label>
