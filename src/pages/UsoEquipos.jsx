@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { usoEquiposAPI, equiposAPI } from '../services/api';
 import EquipoPicker from '../components/EquipoPicker';
+import { useOrdenamiento } from '../hooks/useOrdenamiento';
+import Th from '../components/Th';
 
 // ── Carrera helpers ────────────────────────────────────────────────────────────
 const CARRERAS_RAPIDAS = ['PREPA', 'EXTERNO'];
@@ -538,6 +540,8 @@ function UsoEquipos() {
     return tz === hoyTz;
   });
 
+  const { datosOrdenados, orden, ordenarPor } = useOrdenamiento(registros);
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -637,7 +641,7 @@ function UsoEquipos() {
           {/* Row 1: equipment, user, purpose */}
           <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '15px' }}>
             <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
-              <label>Clave del Equipo</label>
+              <label>Clave del Equipo <span style={{ color: '#e74c3c', fontWeight: '700' }}>*</span></label>
               <EquipoPicker
                 equipos={equipos}
                 value={nuevoUso.clave_activo}
@@ -646,7 +650,7 @@ function UsoEquipos() {
               />
             </div>
             <div className="form-group" style={{ flex: 1, minWidth: '200px', marginBottom: 0 }}>
-              <label>Nombre del Usuario / Alumno</label>
+              <label>Nombre del Usuario / Alumno <span style={{ color: '#e74c3c', fontWeight: '700' }}>*</span></label>
               <input type="text" name="usuario_nombre" required value={nuevoUso.usuario_nombre}
                 onChange={handleInputChange} placeholder="Nombre completo" />
             </div>
@@ -716,12 +720,12 @@ function UsoEquipos() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Equipo</th>
-              <th>Usuario</th>
-              <th>Carrera</th>
-              <th>Inicio</th>
-              <th>Fin</th>
-              <th>Estatus</th>
+              <Th col="equipo"  get={r => r.clave_activo}        orden={orden} ordenarPor={ordenarPor}>Equipo</Th>
+              <Th col="usuario" get={r => r.usuario_nombre || ''} orden={orden} ordenarPor={ordenarPor}>Usuario</Th>
+              <Th col="carrera" get={r => r.carrera || ''}        orden={orden} ordenarPor={ordenarPor}>Carrera</Th>
+              <Th col="inicio"  get={r => r.hora_inicio}          orden={orden} ordenarPor={ordenarPor}>Inicio</Th>
+              <Th col="fin"     get={r => r.hora_fin}             orden={orden} ordenarPor={ordenarPor}>Fin</Th>
+              <Th col="estatus" get={r => r.estatus || ''}        orden={orden} ordenarPor={ordenarPor}>Estatus</Th>
               <th>Acción</th>
             </tr>
           </thead>
@@ -731,7 +735,7 @@ function UsoEquipos() {
             ) : registros.length === 0 ? (
               <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No se localizaron registros bajo los criterios especificados.</td></tr>
             ) : (
-              registros.map((reg) => (
+              datosOrdenados.map((reg) => (
                 <tr key={reg.id_uso}>
                   <td>
                     <strong>{reg.clave_activo}</strong><br />
