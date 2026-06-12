@@ -30,9 +30,20 @@ function Inventario() {
   const [imagenArchivo, setImagenArchivo] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
 
+  // URL de la imagen mostrada en el visor ampliado (null = cerrado)
+  const [imagenPreview, setImagenPreview] = useState(null);
+
   useEffect(() => {
     obtenerDatos();
   }, []);
+
+  // Cerrar el visor de imagen con la tecla Escape
+  useEffect(() => {
+    if (!imagenPreview) return;
+    const handleKey = (e) => { if (e.key === 'Escape') setImagenPreview(null); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [imagenPreview]);
 
   async function obtenerDatos() {
     setCargando(true);
@@ -219,7 +230,13 @@ function Inventario() {
                 <tr key={equipo.clave_activo}>
                   <td>
                     {equipo.imagen_url ? (
-                      <img src={equipo.imagen_url} alt={equipo.modelo} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ecf0f1' }} />
+                      <img
+                        src={equipo.imagen_url}
+                        alt={equipo.modelo}
+                        onClick={() => setImagenPreview(equipo.imagen_url)}
+                        title="Clic para ampliar"
+                        style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ecf0f1', cursor: 'zoom-in' }}
+                      />
                     ) : (
                       <div style={{ width: '50px', height: '50px', backgroundColor: '#ecf0f1', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#95a5a6', textAlign: 'center' }}>Sin archivo</div>
                     )}
@@ -330,6 +347,41 @@ function Inventario() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Visor de imagen ampliada — clic afuera o Esc para cerrar */}
+      {imagenPreview && (
+        <div
+          onClick={() => setImagenPreview(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '40px', cursor: 'zoom-out',
+          }}
+        >
+          <button
+            onClick={() => setImagenPreview(null)}
+            title="Cerrar"
+            style={{
+              position: 'absolute', top: '20px', right: '24px',
+              background: 'none', border: 'none', color: 'white',
+              fontSize: '32px', lineHeight: 1, cursor: 'pointer',
+            }}
+          >
+            ×
+          </button>
+          <img
+            src={imagenPreview}
+            alt="Vista ampliada del equipo"
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '85vh',
+              objectFit: 'contain', borderRadius: '8px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.5)', cursor: 'default',
+            }}
+          />
         </div>
       )}
     </div>
