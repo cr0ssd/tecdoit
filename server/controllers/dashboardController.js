@@ -195,7 +195,8 @@ const obtenerLaboratoriosLista = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('laboratorios')
-      .select('id_laboratorio, nombre');
+      .select('id_laboratorio, nombre')
+      .order('nombre', { ascending: true });
 
     if (error) throw error;
     res.status(200).json(data);
