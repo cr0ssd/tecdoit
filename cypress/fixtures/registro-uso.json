@@ -1,0 +1,14 @@
+{
+  "id_uso": 9001,
+  "clave_activo": "TEC-COMP-001",
+  "usuario_nombre": "Juan Perez",
+  "proposito": "Practica de redes",
+  "carrera": "PREPA",
+  "hora_inicio": "2026-05-11T16:30:00.000Z",
+  "hora_fin": null,
+  "estatus": "En uso",
+  "equipos": {
+    "marca": "Dell",
+    "modelo": "OptiPlex 7090"
+  }
+}
