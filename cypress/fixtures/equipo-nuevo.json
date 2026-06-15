@@ -1,0 +1,10 @@
+{
+  "clave_activo": "TEC-LAP-050",
+  "marca": "Lenovo",
+  "modelo": "ThinkPad E14",
+  "costo": "15000.00",
+  "limite_horas": null,
+  "estatus": "Activo",
+  "imagen_url": null,
+  "laboratorios": { "nombre": "Laboratorio de Cómputo A" }
+}
